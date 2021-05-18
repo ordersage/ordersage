@@ -38,13 +38,23 @@ import paramiko
 # Subprocess functions
 from subprocess import Popen,PIPE,STDOUT,call
 
+# will update, possibly create class with open connection, send command,
+# read stdout, etc
+class SSHConnection():
+    def __init__(self, server, portnum, uname, keyfile):
+        self.server = server
+        self.portnum = portnum
+        self.uname = uname
+        self.keypath = keyfile
+
 def parseArgs():
     pass
 
-
-def sendRemoteCommand(server, uname, portnum, keypath, cmmd):
+# currently returns SSHClient obj, not sure best method here
+# Look into how to handle passphrases
+def openSSHConnection(sshC):
     ssh = paramiko.SSHClient()
-    sshkey = paramiko.Ed25519Key.from_private_key_file(keypath)
+    sshkey = paramiko.Ed25519Key.from_private_key_file(sshC.keypath)
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     # SSH Connect
@@ -53,7 +63,7 @@ def sendRemoteCommand(server, uname, portnum, keypath, cmmd):
     while True:
         try:
             # here in ochestration.py, a transport and channel are open. Is it needed here?
-            ssh.connect(hostname = server, port = portnum, username = uname, pkey = sshkey)
+            ssh.connect(hostname = sshC.server, port = sshC.portnum, username = sshC.uname, pkey = sshkey)
         except Exception as e:
             nTries += 1
             print("In openSSHConnection: " + repr(e) + " - " + str(e))
@@ -64,21 +74,16 @@ def sendRemoteCommand(server, uname, portnum, keypath, cmmd):
                 sleep(10)
                 print("\tRetrying...")
         else:
-            print("SSH connection to " + server + " successful.")
+            print("SSH connection to " + sshC.server + " successful.")
             try:
-                # open session and return the channel
-                stdin, stdout, stderr = ssh.exec_command(cmmd)
-                # does it make sense to return these values?
+                return ssh
             except Exception as e:
                 print("In openSSHConnection: " + repr(e) + " - " + str(e))
                 return "Failure"
             else:
                 break
 
-    # close connection
-    ssh.close()
-
-
+# relies on user having netcat. Would ping be better?
 def checkReboot(server):
     # Spin until the machine comes up and is ready for SSH
     nTries = 0
@@ -89,7 +94,7 @@ def checkReboot(server):
         try:
             out = Popen(["nc", "-z", "-v", "-w5", server, "22"],stderr=STDOUT,stdout=PIPE)
         except:
-            print("In rebootRemoteServer: " + repr(e) + " - " + str(e))
+            print("In checkReboot: " + repr(e) + " - " + str(e))
             return "Failure"
         else:
             t = out.communicate()[0],out.returncode
@@ -107,8 +112,11 @@ def checkReboot(server):
     return "Success"
 
 # Clone repo for fixed and random, set up results directory
-def initializeRemoteServer(repo, dest_dir):
-    pass
+def initializeRemoteServer(sshC, repo, dest_dir):
+    ssh = openSSHConnection(sshC)
+    # make repo public
+    ssh.exec_command("cd /users/" + sshC.uname + " && git clone " + repo)
+    ssh.close()
 
 # run in either random or fixed order n times, rebooting between each run
 def runRemoteExperiment(is_fixed, nruns):
@@ -125,7 +133,19 @@ def connectToDatabase(hostname, username, password, database):
     pass
 
 def main():
-    sendRemoteCommand("ms0745.utah.cloudlab.us", "carina", 22, "/home/carina/.ssh/id_cloud", "sudo reboot")
+    # Parse Arguments:
+    # hostname, username, keyfile, number of repetitions,
+    # git repo, destinstion directory
+
+    # Create SSHConnection object
+    sshC = SSHConnection("ms0745.utah.cloudlab.us", 22, "carina", "/home/carina/.ssh/id_cloud")
+
+    # initializeRemoteServer(sshC, "git@gitlab.flux.utah.edu:carina/test-experiments.git")
+
+    # test reboot and reconnect loop
+    ssh = openSSHConnection(sshC)
+    stdin, stdout, stderr = ssh.exec_command("sudo reboot")
+    ssh.close()
     reboot = checkReboot("ms0745.utah.cloudlab.us")
     if reboot == "Success":
         print("Success")
