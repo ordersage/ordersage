@@ -30,6 +30,7 @@ import argparse
 
 # Time libraries
 from time import sleep
+import datetime
 
 # SSH library
 import paramiko
@@ -39,6 +40,7 @@ from subprocess import Popen,PIPE,STDOUT,call
 
 def parseArgs():
     pass
+
 
 def sendRemoteCommand(server, uname, portnum, keypath, cmmd):
     ssh = paramiko.SSHClient()
@@ -50,6 +52,7 @@ def sendRemoteCommand(server, uname, portnum, keypath, cmmd):
     maxTries = 3
     while True:
         try:
+            # here in ochestration.py, a transport and channel are open. Is it needed here?
             ssh.connect(hostname = server, port = portnum, username = uname, pkey = sshkey)
         except Exception as e:
             nTries += 1
@@ -64,17 +67,17 @@ def sendRemoteCommand(server, uname, portnum, keypath, cmmd):
             print("SSH connection to " + server + " successful.")
             try:
                 # open session and return the channel
-                transport = ssh.get_transport()
-                channel =  transport.open_session()
-                channel.exec_command(cmd)
+                stdin, stdout, stderr = ssh.exec_command(cmmd)
+                # does it make sense to return these values?
             except Exception as e:
                 print("In openSSHConnection: " + repr(e) + " - " + str(e))
                 return "Failure"
             else:
                 break
+
     # close connection
-    channel.close()
     ssh.close()
+
 
 def checkReboot(server):
     # Spin until the machine comes up and is ready for SSH
@@ -122,10 +125,11 @@ def connectToDatabase(hostname, username, password, database):
     pass
 
 def main():
-    sendRemoteCommand("ms0745.utah.cloudlab.us", 22, "carina", "/home/carina/.ssh/id_cloud", "sudo reboot")
+    sendRemoteCommand("ms0745.utah.cloudlab.us", "carina", 22, "/home/carina/.ssh/id_cloud", "sudo reboot")
     reboot = checkReboot("ms0745.utah.cloudlab.us")
     if reboot == "Success":
         print("Success")
+
 # Entry point of the application
 if __name__ == "__main__":
     main()
