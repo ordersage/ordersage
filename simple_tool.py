@@ -28,17 +28,21 @@
 import sys
 import argparse
 
+# Time libraries
+from time import sleep
+
 # SSH library
-import paramkio
+import paramiko
 
 # Subprocess functions
 from subprocess import Popen,PIPE,STDOUT,call
 
 def parseArgs():
+    pass
 
-def openSSHConnection(hostname, username, portnum, keypath):
+def sendRemoteCommand(server, uname, portnum, keypath, cmmd):
     ssh = paramiko.SSHClient()
-    sshkey = paramiko.RSAKey.from_private_key_file(keypath)
+    sshkey = paramiko.Ed25519Key.from_private_key_file(keypath)
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     # SSH Connect
@@ -46,40 +50,43 @@ def openSSHConnection(hostname, username, portnum, keypath):
     maxTries = 3
     while True:
         try:
-            ssh.connect(hostname = hostname, port = portnum, username = username, pkey = sshkey)
+            ssh.connect(hostname = server, port = portnum, username = uname, pkey = sshkey)
         except Exception as e:
             nTries += 1
-            print "In openSSHConnection: " + repr(e) + " - " + str(e)
-            print "Error #" + str(nTries) + " out of " + str(maxTries) + "."
+            print("In openSSHConnection: " + repr(e) + " - " + str(e))
+            print("Error #" + str(nTries) + " out of " + str(maxTries) + ".")
             if nTries >= maxTries:
                 return "Failure"
             else:
                 sleep(10)
-                print "\tRetrying..."
+                print("\tRetrying...")
         else:
-            print "SSH connection to " + hostname + " successful."
+            print("SSH connection to " + server + " successful.")
             try:
                 # open session and return the channel
                 transport = ssh.get_transport()
-                return transport.open_session()
+                channel =  transport.open_session()
+                channel.exec_command(cmd)
             except Exception as e:
-                print "In openSSHConnection: " + repr(e) + " - " + str(e)
+                print("In openSSHConnection: " + repr(e) + " - " + str(e))
                 return "Failure"
             else:
                 break
+    # close connection
+    channel.close()
+    ssh.close()
 
-
-def checkReboot(hostname):
+def checkReboot(server):
     # Spin until the machine comes up and is ready for SSH
     nTries = 0
     maxTries = 8
-    print "Awaiting completion of reboot for " + hostname + ", sleeping for 4 minutes..."
+    print("Awaiting completion of reboot for " + server + ", sleeping for 4 minutes...")
     sleep(240)
     while True:
         try:
             out = Popen(["nc", "-z", "-v", "-w5", server, "22"],stderr=STDOUT,stdout=PIPE)
         except:
-            print "In rebootRemoteServer: " + repr(e) + " - " + str(e)
+            print("In rebootRemoteServer: " + repr(e) + " - " + str(e))
             return "Failure"
         else:
             t = out.communicate()[0],out.returncode
@@ -90,10 +97,10 @@ def checkReboot(hostname):
                 if nTries > maxTries:
                     return "Failure"
                 else:
-                    print "\tConnection attempt to " + hostname + " timed out, retrying (" + str(nTries) + " out of " + str(maxTries) + ")..."
+                    print("\tConnection attempt to " + server + " timed out, retrying (" + str(nTries) + " out of " + str(maxTries) + ")...")
                     sleep(60)
 
-    print "Node " + hostname + " is up at " + str(datetime.datetime.today()) + ", connecting via SSH."
+    print("Node " + server + " is up at " + str(datetime.datetime.today()))
     return "Success"
 
 # Clone repo for fixed and random, set up results directory
@@ -115,12 +122,13 @@ def connectToDatabase(hostname, username, password, database):
     pass
 
 def main():
-    openSSHConnection("ms0745.utah.cloudlab.us", 22, "carina", )
-
-
+    sendRemoteCommand("ms0745.utah.cloudlab.us", 22, "carina", "/home/carina/.ssh/id_cloud", "sudo reboot")
+    reboot = checkReboot("ms0745.utah.cloudlab.us")
+    if reboot == "Success":
+        print("Success")
 # Entry point of the application
 if __name__ == "__main__":
     main()
 else:
-    print "Error, cannot enter main, exiting."
+    print("Error, cannot enter main, exiting.")
     sys.exit(2)
