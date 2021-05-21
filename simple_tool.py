@@ -6,7 +6,9 @@
 # 3. Establish connection to pre-allocated machine
 # 4. Get remote server ready for experiments
 #       a. clone repo, set up directory for results
-#       b. run initialization script
+#       b. run initialize.sh
+#           - install libraries,
+#       b2. gather machine specs (specs.sh) save under results
 #       c. reboot to clean state
 # On remote machine (facilitated by controller node)
 # 5. Run loop n times:
@@ -17,26 +19,33 @@
 #   a. Run experiments in random order
 #   b. Store results in directory
 #   c. Reboot
-#7. sftp results directory to controller node
+# 7. scp results directory to controller node
 
 # On controller node:
 # 8. Insert results into database
 
 # *Eventually add in stats tests to tell if order matters
 
+# todo: loops, recognize experiments
+
 # system libraries
 import sys
 import argparse
 
-# Time libraries
+# Time libraries and RNG
 from time import sleep
 import datetime
+import random
 
-# SSH library
+# SSH libraries
 import paramiko
+from scp import SCPClient
 
 # Subprocess functions
 from subprocess import Popen,PIPE,STDOUT,call
+
+# Configuration file
+import config
 
 # will update, possibly create class with open connection, send command,
 # read stdout, etc
@@ -88,10 +97,12 @@ def checkReboot(server):
     # Spin until the machine comes up and is ready for SSH
     nTries = 0
     maxTries = 8
-    print("Awaiting completion of reboot for " + server + ", sleeping for 4 minutes...")
-    sleep(240)
+    print("Awaiting completion of reboot for " + server + ", sleeping for 1 minute...")
+    sleep(60)
     while True:
         try:
+            # hostname
+            # out = Popen(["nc", "-z", "-v", "-w5", server, "22"],stderr=STDOUT,stdout=PIPE)
             out = Popen(["nc", "-z", "-v", "-w5", server, "22"],stderr=STDOUT,stdout=PIPE)
         except:
             print("In checkReboot: " + repr(e) + " - " + str(e))
@@ -114,13 +125,36 @@ def checkReboot(server):
 # Clone repo for fixed and random, set up results directory
 def initializeRemoteServer(sshC, repo, dest_dir):
     ssh = openSSHConnection(sshC)
-    # make repo public
-    ssh.exec_command("cd /users/" + sshC.uname + " && git clone " + repo)
+
+    ssh.exec_command("mkdir " + dest_dir)
+    print("Cloning repo: " + repo)
+    # TODO: get system specs and add to results directory
+    ssh.exec_command("git clone " + repo)
+    print("Running initialization script...")
+    ssh.exec_command("cd test-experiments && bash initialize.sh")
+    print("Rebooting...")
+    ssh.exec_command("sudo reboot")
+    reboot = checkReboot(config.worker)
     ssh.close()
 
 # run in either random or fixed order n times, rebooting between each run
-def runRemoteExperiment(is_fixed, nruns):
-    pass
+def runRemoteExperiment(sshC, order, nruns, results_dir):
+    ssh = openSSHConnection(sshC)
+    scp = SCPClient(ssh.get_transport())
+
+    # get list of experiment files from remote server save to list
+    # exps = ["exp_1.sh",  "exp_2.sh",  "exp_3.sh",  "exp_4.sh",  "exp_5.sh"]
+    #for x in range(nruns):
+    #    if order == "random":
+    #        exps = random.shuffle(exps)
+    #    for exp in exps:
+            # run on remote machine
+            # save results to directory
+
+    # scp results to controller node
+    scp.get(results_dir, ".")
+    scp.close()
+    ssh.close()
 
 # Send results to database
 def insertResults(result_dir, nodename):
@@ -137,18 +171,14 @@ def main():
     # hostname, username, keyfile, number of repetitions,
     # git repo, destinstion directory
 
-    # Create SSHConnection object
-    sshC = SSHConnection("ms0745.utah.cloudlab.us", 22, "carina", "/home/carina/.ssh/id_cloud")
+    # Create SSHConnection
+    sshC = SSHConnection(config.worker, 22, config.user, config.keyfile)
 
-    # initializeRemoteServer(sshC, "git@gitlab.flux.utah.edu:carina/test-experiments.git")
+    # initialize server, clone repo, reboot
+    initializeRemoteServer(sshC, config.repo , "results")
 
-    # test reboot and reconnect loop
-    ssh = openSSHConnection(sshC)
-    stdin, stdout, stderr = ssh.exec_command("sudo reboot")
-    ssh.close()
-    reboot = checkReboot("ms0745.utah.cloudlab.us")
-    if reboot == "Success":
-        print("Success")
+    # run experiments
+    runRemoteExperiment(sshC, "fixed", 1, "~/results")
 
 # Entry point of the application
 if __name__ == "__main__":
