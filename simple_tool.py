@@ -61,6 +61,7 @@ def openSSHConnection(sshC):
             print("SSH connection to " + sshC.server + " successful.")
             return ssh
 
+#TODO: Add in retry option
 def execRemoteCommand(sshClient, cmd, verbose = False):
     try:
         channel = sshClient.get_transport().open_session()
@@ -79,22 +80,25 @@ def execRemoteCommand(sshClient, cmd, verbose = False):
     else:
         exit_status = channel.recv_exit_status()
         if exit_status != 0:
-            if verbose:
+            if verbose == True:
                 print("\tError executing command: " + cmd)
                 print("\tExit status: " + str(exit_status))
             return "Failure"
         channel.close()
         return "Success"
 
+#TODO: Add print option for stderr
 def execLocalCommand(ssh, cmd, methodName, maxTries = 1, verbose = False):
     nTries = 0
     while True:
         try:
-            out = subprocess.run(cmd, stderr=STDOUT)
+            out = subprocess.run(cmd, stderr=STDOUT, stdout=PIPE)
         except Exception as ex:
             print("Error executing " + " ".join(cmd) + ": " + repr(ex))
         else:
             if out.returncode == 0:
+                if verbose and out.stdout:
+                    print(out.stdout.decode('utf-8'))
                 break
             else:
                 nTries += 1
@@ -102,8 +106,7 @@ def execLocalCommand(ssh, cmd, methodName, maxTries = 1, verbose = False):
                     return "Failure"
                 else:
                     print("\tError in "+ methodName + " retrying (" + str(nTries) + " out of " + str(maxTries) + ")...")
-            if verbose == True and out.stdout != b'':
-                print(out.stdout)
+
     return "Success"
 
 def reboot(sshClient, server):
@@ -137,6 +140,7 @@ def reboot(sshClient, server):
 
 #
 # Initialize Remote Server
+# TODO: Get system specs and save to log file
 #
 def initializeRemoteServer(sshC, repo, config_path, dest_dir):
     ssh = openSSHConnection(sshC)
@@ -150,25 +154,27 @@ def initializeRemoteServer(sshC, repo, config_path, dest_dir):
     #Transfer experiment commands
     print("Transferring experiment commands from " + config.worker + "...")
     cmd = ["scp", config.user + "@" + config.worker + ":" + config.configfile_path, "."]
-    execLocalCommand(ssh, cmd, "initializaRemoteServer")
+    execLocalCommand(ssh, cmd, "initializaRemoteServer", verbose = config.cmd_verbose)
 
     print("Running initialization script...")
     execRemoteCommand(ssh, "cd test-experiments && bash initialize.sh", verbose = config.cmd_verbose)
 
     # Reboot to clean state and then check if successful
-    reboot(ssh, config.worker)
+    #reboot(ssh, config.worker)
 
     ssh.close()
 
 # run in either random or fixed order n times, rebooting between each run
 def runRemoteExperiment(sshC, order, exps, nruns):
     data = []
-    # begin exp loop
+
+    # begin exp loop ntimes
     for x in range(nruns):
         ssh = openSSHConnection(sshC)
         runInfo = []
         results = []
         id = uuid.uuid1()
+
         print("Running loop " + str(x + 1) + " of " + str(nruns))
         if order == "random":
             random.shuffle(exps)
@@ -176,9 +182,11 @@ def runRemoteExperiment(sshC, order, exps, nruns):
             print("Running " + exp + "...")
             cmd = "cd test-experiments && " + exp
             results.append(execRemoteCommand(ssh, cmd, verbose = config.exp_verbose))
+
         runInfo.extend((id, x+1, order, exps, results))
         data.append(runInfo)
-        #reboot(ssh, config.worker)
+
+        reboot(ssh, config.worker)
         ssh.close()
     return data
 
@@ -198,20 +206,20 @@ def main():
         exps = f.readlines()
     exps = [x.strip() for x in exps]
 
-    # run experiments
+    # run experiments, returns lists to add to dataframe
     fixed = runRemoteExperiment(sshC, "fixed", exps, 1)
     random = runRemoteExperiment(sshC, "random", exps, 1)
 
-    # scp results
+    # scp results from remote experiments
     ssh = openSSHConnection(sshC)
     cmd = ["scp", config.user + "@" + config.worker + ":" + config.results_path, "."]
     execLocalCommand(ssh, cmd, "initializaRemoteServer", verbose = config.cmd_verbose)
 
+    # put in list, add to dataframe
     with open(config.results_file) as f:
         results = f.readlines()
     results = [x.strip() for x in results]
     #TODO Add results to csv
-
 
     ssh.close()
 
