@@ -61,7 +61,7 @@ def openSSHConnection(sshC):
             print("SSH connection to " + sshC.server + " successful.")
             return ssh
 
-def execRemoteCommand(sshClient, cmd, verbose):
+def execRemoteCommand(sshClient, cmd, verbose = False):
     try:
         channel = sshClient.get_transport().open_session()
         channel.set_combine_stderr(True)
@@ -71,31 +71,54 @@ def execRemoteCommand(sshClient, cmd, verbose):
             if not output:
                 break
             else:
-             if verbose:
-                print(output.decode('utf-8').rstrip())
+                if verbose:
+                    print(output.decode('utf-8').rstrip())
     except Exception as e:
         print("\tSSH exception while executing " + cmd)
+        return "Failure"
     else:
         exit_status = channel.recv_exit_status()
         if exit_status != 0:
-            print("\tError executing command: " + cmd)
-            print("\tExit status: " + str(exit_status))
+            if verbose:
+                print("\tError executing command: " + cmd)
+                print("\tExit status: " + str(exit_status))
             return "Failure"
         channel.close()
         return "Success"
 
+def execLocalCommand(ssh, cmd, methodName, maxTries = 1, verbose = False):
+    nTries = 0
+    while True:
+        try:
+            out = subprocess.run(cmd, stderr=STDOUT)
+        except Exception as ex:
+            print("Error executing " + " ".join(cmd) + ": " + repr(ex))
+        else:
+            if out.returncode == 0:
+                break
+            else:
+                nTries += 1
+                if nTries > maxTries:
+                    return "Failure"
+                else:
+                    print("\tError in "+ methodName + " retrying (" + str(nTries) + " out of " + str(maxTries) + ")...")
+            if verbose == True and out.stdout != b'':
+                print(out.stdout)
+    return "Success"
+
 def reboot(sshClient, server):
     print("Rebooting...")
-    sshClient.execRemoteCommand("sudo reboot")
+    execRemoteCommand(sshClient,"sudo reboot")
 
     # Spin until the machine comes up and is ready for SSH
+    # Still printing to stdout...
     nTries = 0
     maxTries = 8
     print("Awaiting completion of reboot for " + server + ", sleeping for 2 minutes...")
     sleep(120)
     while True:
         try:
-            out = run(["nc", "-z", "-v", "-w5", server, "22"],stderr=STDOUT)
+            out = run(["nc", "-z", "-v", "-w5", server, "22"],stderr=STDOUT, stdout=PIPE)
         except:
             print("In reboot: " + repr(e) + " - " + str(e))
         else:
@@ -121,32 +144,16 @@ def initializeRemoteServer(sshC, repo, config_path, dest_dir):
     nTries = 0
 
     # set up results directory and clone repo
-    execRemoteCommand(ssh, "mkdir -p " + dest_dir)
     print("Cloning repo: " + repo)
-    execRemoteCommand(ssh, "git clone " + repo)
+    execRemoteCommand(ssh, "git clone " + repo, verbose = config.cmd_verbose)
 
     #Transfer experiment commands
-    print("Collecting Experiments...")
+    print("Transferring experiment commands from " + config.worker + "...")
     cmd = ["scp", config.user + "@" + config.worker + ":" + config.configfile_path, "."]
-    while True:
-        try:
-            out = subprocess.run(cmd, stderr=STDOUT)
-        except Exception as ex:
-            print("Error executing " + " ".join(cmd) + ": " + repr(ex))
-        else:
-            if out.returncode == 0:
-                break
-            else:
-                nTries += 1
-                if nTries > maxTries:
-                    return "Failure"
-                else:
-                    print("\tError in initializeRemoteServer, retrying (" + str(nTries) + " out of " + str(maxTries) + ")...")
-            if config.verbose == True and out.stdout != b'':
-                print(out.stdout)
+    execLocalCommand(ssh, cmd, "initializaRemoteServer")
 
     print("Running initialization script...")
-    execRemoteCommand(ssh, "cd test-experiments && bash initialize.sh")
+    execRemoteCommand(ssh, "cd test-experiments && bash initialize.sh", verbose = config.cmd_verbose)
 
     # Reboot to clean state and then check if successful
     reboot(ssh, config.worker)
@@ -154,11 +161,11 @@ def initializeRemoteServer(sshC, repo, config_path, dest_dir):
     ssh.close()
 
 # run in either random or fixed order n times, rebooting between each run
-def runRemoteExperiment(sshC, order, exps, nruns, results_dir):
-    ssh = openSSHConnection(sshC)
+def runRemoteExperiment(sshC, order, exps, nruns):
     data = []
     # begin exp loop
     for x in range(nruns):
+        ssh = openSSHConnection(sshC)
         runInfo = []
         results = []
         id = uuid.uuid1()
@@ -168,10 +175,11 @@ def runRemoteExperiment(sshC, order, exps, nruns, results_dir):
         for exp in exps:
             print("Running " + exp + "...")
             cmd = "cd test-experiments && " + exp
-            results.append(execRemoteCommand(ssh, cmd))
+            results.append(execRemoteCommand(ssh, cmd, verbose = config.exp_verbose))
         runInfo.extend((id, x+1, order, exps, results))
         data.append(runInfo)
-    ssh.close()
+        #reboot(ssh, config.worker)
+        ssh.close()
     return data
 
 def insertFailure(nodename):
@@ -191,11 +199,24 @@ def main():
     exps = [x.strip() for x in exps]
 
     # run experiments
-    fixed = runRemoteExperiment(sshC, "fixed", exps, 1, "~/results")
-    random = runRemoteExperiment(sshC, "random", exps, 1, "~/results")
+    fixed = runRemoteExperiment(sshC, "fixed", exps, 1)
+    random = runRemoteExperiment(sshC, "random", exps, 1)
+
+    # scp results
+    ssh = openSSHConnection(sshC)
+    cmd = ["scp", config.user + "@" + config.worker + ":" + config.results_path, "."]
+    execLocalCommand(ssh, cmd, "initializaRemoteServer", verbose = config.cmd_verbose)
+
+    with open(config.results_file) as f:
+        results = f.readlines()
+    results = [x.strip() for x in results]
+    #TODO Add results to csv
+
+
+    ssh.close()
 
     # Create dataframe for csv
-    results = pd.DataFrame(fixed + random, columns=('uuid num', 'run num', 'run type', 'experiment order', "Result"))
+    results = pd.DataFrame(fixed + random, columns=('run_uuid', 'run_num', 'run_type', 'experiment_order', "success?"))
     results.to_csv("test.csv", index=False)
 
 # Entry point of the application
