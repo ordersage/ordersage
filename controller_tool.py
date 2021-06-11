@@ -12,8 +12,12 @@ import random
 import paramiko
 from scp import SCPClient
 
+# error handling and logging
+from requests import ConnectionError
+import logging
+
 # Subprocess functions
-from subprocess import Popen,PIPE,STDOUT,run
+from subprocess import Popen, PIPE, STDOUT, run
 
 # csv library
 import pandas as pd
@@ -31,38 +35,37 @@ class RemoteClient():
         self.uname = uname
         self.keypath = keyfile
 
-def parseArgs():
+def parse_args():
     pass
 
-def openSSHConnection(sshC):
+def open_ssh_connection(sshC, timeout=10, max_tries=3):
     ssh = paramiko.SSHClient()
     # what if it is an rsa key?
     sshkey = paramiko.Ed25519Key.from_private_key_file(sshC.keypath)
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     # SSH Connect
-    nTries = 0
-    maxTries = 3
+    n_tries = 0
     while True:
         try:
-            ssh.connect(hostname = sshC.server, port = sshC.portnum, username = sshC.uname, pkey = sshkey)
+            ssh.connect(hostname = sshC.server, port = sshC.portnum, username = sshC.uname, pkey = sshkey, timeout = timeout)
         except Exception as e:
-            nTries += 1
-            print("In openSSHConnection: " + repr(e) + " - " + str(e))
-            print("Error #" + str(nTries) + " out of " + str(maxTries) + ".")
-            if nTries >= maxTries:
-                print("\tFailure to connect to " + sshC.server + "...exiting.")
-                # Do something here other than return failure
-                return "Failure"
+            n_tries += 1
+            print("In open_ssh_connection: " + repr(e) + " - " + str(e))
+            print("Error #" + str(n_tries) + " out of " + str(max_tries) + ".")
+            if n_tries >= max_tries:
+                # Do something here other than return failure. Possibly raise exception
+                # Write to the log first
+                raise ConnectionError("\tFailure to connect to " + sshC.server + "...exiting.")
             else:
-                sleep(10)
                 print("\tRetrying...")
+                #sleep(10)
         else:
             print("SSH connection to " + sshC.server + " successful.")
             return ssh
 
 #TODO: Add in retry option
-def execRemoteCommand(sshClient, cmd, verbose = False):
+def execute_remote_command(sshClient, cmd, verbose=False, max_tries=1):
     try:
         channel = sshClient.get_transport().open_session()
         channel.set_combine_stderr(True)
@@ -88,8 +91,8 @@ def execRemoteCommand(sshClient, cmd, verbose = False):
         return "Success"
 
 #TODO: Add print option for stderr
-def execLocalCommand(ssh, cmd, methodName, maxTries = 1, verbose = False):
-    nTries = 0
+def execute_local_command(ssh, cmd, function_name, verbose=False, max_tries=1):
+    n_tries = 0
     while True:
         try:
             out = subprocess.run(cmd, stderr=STDOUT, stdout=PIPE)
@@ -101,26 +104,27 @@ def execLocalCommand(ssh, cmd, methodName, maxTries = 1, verbose = False):
                     print(out.stdout.decode('utf-8'))
                 break
             else:
-                nTries += 1
-                if nTries > maxTries:
+                n_tries += 1
+                if n_tries > max_tries:
                     return "Failure"
                 else:
-                    print("\tError in "+ methodName + " retrying (" + str(nTries) + " out of " + str(maxTries) + ")...")
+                    print("\tError in "+ function_name + " retrying (" + str(n_tries) + " out of " + str(max_tries) + ")...")
 
     return "Success"
 
 def reboot(sshClient, server):
     print("Rebooting...")
-    execRemoteCommand(sshClient,"sudo reboot")
+    execute_remote_command(sshClient,"sudo reboot")
 
     # Spin until the machine comes up and is ready for SSH
     # Still printing to stdout...
-    nTries = 0
-    maxTries = 8
+    n_tries = 0
+    max_tries = 8
     print("Awaiting completion of reboot for " + server + ", sleeping for 2 minutes...")
     sleep(120)
     while True:
         try:
+            # Look into alternative here
             out = run(["nc", "-z", "-v", "-w5", server, "22"],stderr=STDOUT, stdout=PIPE)
         except:
             print("In reboot: " + repr(e) + " - " + str(e))
@@ -128,11 +132,11 @@ def reboot(sshClient, server):
             if out.returncode == 0:
                 break
             else:
-                nTries += 1
-                if nTries > maxTries:
+                n_tries += 1
+                if n_tries > max_tries:
                     return "Failure"
                 else:
-                    print("\tConnection attempt to " + server + " timed out, retrying (" + str(nTries) + " out of " + str(maxTries) + ")...")
+                    print("\tConnection attempt to " + server + " timed out, retrying (" + str(n_tries) + " out of " + str(max_tries) + ")...")
                     sleep(60)
 
     print("Node " + server + " is up at " + str(datetime.datetime.today()))
@@ -142,22 +146,22 @@ def reboot(sshClient, server):
 # Initialize Remote Server
 # TODO: Get system specs and save to log file
 #
-def initializeRemoteServer(sshC, repo, config_path, dest_dir):
-    ssh = openSSHConnection(sshC)
-    maxTries = 3
-    nTries = 0
+def initialize_remote_server(sshC, repo, config_path, dest_dir):
+    ssh = open_ssh_connection(sshC)
+    max_tries = 3
+    n_tries = 0
 
     # set up results directory and clone repo
     print("Cloning repo: " + repo)
-    execRemoteCommand(ssh, "git clone " + repo, verbose = config.cmd_verbose)
+    execute_remote_command(ssh, "git clone " + repo, verbose = config.cmd_verbose)
 
     #Transfer experiment commands
     print("Transferring experiment commands from " + config.worker + "...")
     cmd = ["scp", config.user + "@" + config.worker + ":" + config.configfile_path, "."]
-    execLocalCommand(ssh, cmd, "initializaRemoteServer", verbose = config.cmd_verbose)
+    execute_local_command(ssh, cmd, "initializaRemoteServer", verbose = config.cmd_verbose)
 
     print("Running initialization script...")
-    execRemoteCommand(ssh, "cd test-experiments && bash initialize.sh", verbose = config.cmd_verbose)
+    execute_remote_command(ssh, "cd test-experiments && bash initialize.sh", verbose = config.cmd_verbose)
 
     # Reboot to clean state and then check if successful
     #reboot(ssh, config.worker)
@@ -165,12 +169,12 @@ def initializeRemoteServer(sshC, repo, config_path, dest_dir):
     ssh.close()
 
 # run in either random or fixed order n times, rebooting between each run
-def runRemoteExperiment(sshC, order, exps, nruns):
+def run_remote_experiment(sshC, order, exps, nruns):
     data = []
 
     # begin exp loop ntimes
     for x in range(nruns):
-        ssh = openSSHConnection(sshC)
+        ssh = open_ssh_connection(sshC)
         runInfo = []
         results = []
         id = uuid.uuid1()
@@ -181,7 +185,7 @@ def runRemoteExperiment(sshC, order, exps, nruns):
         for exp in exps:
             print("Running " + exp + "...")
             cmd = "cd test-experiments && " + exp
-            results.append(execRemoteCommand(ssh, cmd, verbose = config.exp_verbose))
+            results.append(execute_remote_command(ssh, cmd, verbose = config.exp_verbose))
 
         runInfo.extend((id, x+1, order, exps, results))
         data.append(runInfo)
@@ -190,7 +194,7 @@ def runRemoteExperiment(sshC, order, exps, nruns):
         ssh.close()
     return data
 
-def insertFailure(nodename):
+def insert_failure(nodename):
     pass
 
 def main():
@@ -199,7 +203,7 @@ def main():
     # git repo, destinstion directory
 
     sshC = RemoteClient(config.worker, 22, config.user, config.keyfile)
-    initializeRemoteServer(sshC, config.repo , config.configfile_path, config.results_dir)
+    initialize_remote_server(sshC, config.repo , config.configfile_path, config.results_dir)
 
     # get exp cmds
     with open(config.configfile) as f:
@@ -207,13 +211,13 @@ def main():
     exps = [x.strip() for x in exps]
 
     # run experiments, returns lists to add to dataframe
-    fixed = runRemoteExperiment(sshC, "fixed", exps, 1)
-    random = runRemoteExperiment(sshC, "random", exps, 1)
+    fixed = run_remote_experiment(sshC, "fixed", exps, 1)
+    random = run_remote_experiment(sshC, "random", exps, 1)
 
     # scp results from remote experiments
-    ssh = openSSHConnection(sshC)
+    ssh = open_ssh_connection(sshC)
     cmd = ["scp", config.user + "@" + config.worker + ":" + config.results_path, "."]
-    execLocalCommand(ssh, cmd, "initializaRemoteServer", verbose = config.cmd_verbose)
+    execute_local_command(ssh, cmd, "initializaRemoteServer", verbose = config.cmd_verbose)
 
     # put in list, add to dataframe
     with open(config.results_file) as f:
