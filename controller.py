@@ -5,7 +5,7 @@ import argparse
 
 # Time libraries and RNG
 from time import sleep
-import datetime
+from datetime import datetime
 import random
 
 # SSH libraries
@@ -19,8 +19,9 @@ import logging
 # Subprocess functions
 from subprocess import Popen, PIPE, STDOUT, run
 
-# csv library
+# dataframe libraries
 import pandas as pd
+import numpy as np
 
 # uuid library
 import uuid
@@ -70,6 +71,8 @@ def execute_remote_command(ssh_client, cmd, verbose=False, max_tries=1):
         channel = ssh_client.get_transport().open_session()
         channel.set_combine_stderr(True)
         channel.exec_command(cmd)
+        # Print output as it is received
+        #TODO: add tab to each line of output, incorporate log
         while True:
             output = channel.recv(1024)
             if not output:
@@ -91,7 +94,7 @@ def execute_remote_command(ssh_client, cmd, verbose=False, max_tries=1):
         return "Success"
 
 #TODO: Add print option for stderr
-def execute_local_command(ssh, cmd, function_name, verbose=False, max_tries=1):
+def execute_local_command(ssh, cmd, function_name="execute_local_command", verbose=False, max_tries=1):
     n_tries = 0
     while True:
         try:
@@ -139,7 +142,7 @@ def reboot(ssh_client, server):
                     print("\tConnection attempt to " + server + " timed out, retrying (" + str(n_tries) + " out of " + str(max_tries) + ")...")
                     sleep(60)
 
-    print("Node " + server + " is up at " + str(datetime.datetime.today()))
+    print("Node " + server + " is up at " + str(datetime.today()))
     return "Success"
 
 #
@@ -164,7 +167,7 @@ def initialize_remote_server(sshC, repo, config_path, dest_dir):
     execute_remote_command(ssh, "cd test-experiments && bash initialize.sh", verbose = config.cmd_verbose)
 
     # Reboot to clean state and then check if successful
-    #reboot(ssh, config.worker)
+    reboot(ssh, config.worker)
 
     ssh.close()
 
@@ -186,8 +189,8 @@ def run_remote_experiment(sshC, order, exp_dict, n_runs):
             cmd = exp_dict.get(exp)
             print("Running " + cmd + "...")
             result = execute_remote_command(ssh, "cd test-experiments && " + cmd, verbose = config.exp_verbose)
-            # look into most efficient way to do this
-            exp_result = [id, cmd, exp, i, order, result]
+            #TODO: print out to log, look into most efficient way to add to list
+            exp_result = [id, x+1, n_runs, cmd, exp, i, order, result]
             data.append(exp_result)
 
         reboot(ssh, config.worker)
@@ -217,22 +220,24 @@ def main():
     fixed = run_remote_experiment(sshC, "fixed", exp_dict, 1)
     random = run_remote_experiment(sshC, "random", exp_dict, 1)
 
-    # scp results from remote experiments
+    # scp results directory from remote and rename with timestamp
     ssh = open_ssh_connection(sshC)
-    cmd = ["scp", config.user + "@" + config.worker + ":" + config.results_path, "."]
-    execute_local_command(ssh, cmd, "initializaRemoteServer", verbose = config.cmd_verbose)
+    cmd = ["scp", "-r", config.user + "@" + config.worker + ":" + config.results_dir, "."]
+    execute_local_command(ssh, cmd, verbose = config.cmd_verbose)
+    # timestamp results folder
+    filename = datetime.now().strftime("%Y%m%d_%H:%M:%S") + "_results"
+    execute_local_command(ssh, ["mv", "results", filename], verbose = config.cmd_verbose)
 
     # put in list, add to dataframe
-    with open(config.results_file) as f:
+    with open(filename + "/" + config.results_file) as f:
         results = f.readlines()
-    results = [x.strip() for x in results]
-    #TODO Add results to csv
+    all_results = [x.strip() for x in results]
 
     # Create dataframe for csv
-    results = pd.DataFrame(fixed + random, columns=("run_uuid", "exp_command", "exp_number", "order_number", "order_type", "completion_status"))
-    # Bring over results directory to add to dataframe
+    results = pd.DataFrame(fixed + random, columns=("run_uuid", "run_num", "total_runs", "exp_command", "exp_number", "order_number", "order_type", "completion_status"))
+    results["result"] = all_results
 
-    results.to_csv("test.csv", index=False)
+    results.to_csv(filename + "/results.csv", index=False)
     ssh.close()
 
 # Entry point of the application

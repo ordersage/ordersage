@@ -6,6 +6,5 @@ configfile_path = "~/test-experiments/exp_config.py"
 configfile = "exp_config.py"
 cmd_verbose = True
 exp_verbose = True
-results_dir = "results"
-results_path = "~/test-experiments/results.txt"
+results_dir = "~/test-experiments/results"
 results_file = "results.txt"
