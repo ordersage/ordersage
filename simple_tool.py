@@ -65,9 +65,9 @@ def open_ssh_connection(sshC, timeout=10, max_tries=3):
             return ssh
 
 #TODO: Add in retry option
-def execute_remote_command(sshClient, cmd, verbose=False, max_tries=1):
+def execute_remote_command(ssh_client, cmd, verbose=False, max_tries=1):
     try:
-        channel = sshClient.get_transport().open_session()
+        channel = ssh_client.get_transport().open_session()
         channel.set_combine_stderr(True)
         channel.exec_command(cmd)
         while True:
@@ -112,9 +112,9 @@ def execute_local_command(ssh, cmd, function_name, verbose=False, max_tries=1):
 
     return "Success"
 
-def reboot(sshClient, server):
+def reboot(ssh_client, server):
     print("Rebooting...")
-    execute_remote_command(sshClient,"sudo reboot")
+    execute_remote_command(ssh_client,"sudo reboot")
 
     # Spin until the machine comes up and is ready for SSH
     # Still printing to stdout...
@@ -169,26 +169,26 @@ def initialize_remote_server(sshC, repo, config_path, dest_dir):
     ssh.close()
 
 # run in either random or fixed order n times, rebooting between each run
-def run_remote_experiment(sshC, order, exps, nruns):
+def run_remote_experiment(sshC, order, exp_dict, n_runs):
     data = []
+    exps = list(exp_dict.keys())
 
-    # begin exp loop ntimes
-    for x in range(nruns):
+    # begin exp loop n times
+    for x in range(n_runs):
         ssh = open_ssh_connection(sshC)
-        runInfo = []
-        results = []
         id = uuid.uuid1()
+        # Change to log at some point
+        print("Running " + order + " loop " + str(x + 1) + " of " + str(n_runs))
 
-        print("Running loop " + str(x + 1) + " of " + str(nruns))
         if order == "random":
             random.shuffle(exps)
-        for exp in exps:
-            print("Running " + exp + "...")
-            cmd = "cd test-experiments && " + exp
-            results.append(execute_remote_command(ssh, cmd, verbose = config.exp_verbose))
-
-        runInfo.extend((id, x+1, order, exps, results))
-        data.append(runInfo)
+        for i, exp in enumerate(exps):
+            cmd = exp_dict.get(exp)
+            print("Running " + cmd + "...")
+            result = execute_remote_command(ssh, "cd test-experiments && " + cmd, verbose = config.exp_verbose)
+            # look into most efficient way to do this
+            exp_result = [id, cmd, exp, i, order, result]
+            data.append(exp_result)
 
         reboot(ssh, config.worker)
         ssh.close()
@@ -210,9 +210,12 @@ def main():
         exps = f.readlines()
     exps = [x.strip() for x in exps]
 
+    # assign number to each item in list
+    exp_dict = {i : exps[i] for i in range(0, len(exps))}
+
     # run experiments, returns lists to add to dataframe
-    fixed = run_remote_experiment(sshC, "fixed", exps, 1)
-    random = run_remote_experiment(sshC, "random", exps, 1)
+    fixed = run_remote_experiment(sshC, "fixed", exp_dict, 1)
+    random = run_remote_experiment(sshC, "random", exp_dict, 1)
 
     # scp results from remote experiments
     ssh = open_ssh_connection(sshC)
@@ -225,11 +228,12 @@ def main():
     results = [x.strip() for x in results]
     #TODO Add results to csv
 
-    ssh.close()
-
     # Create dataframe for csv
-    results = pd.DataFrame(fixed + random, columns=('run_uuid', 'run_num', 'run_type', 'experiment_order', "success?"))
+    results = pd.DataFrame(fixed + random, columns=("run_uuid", "exp_command", "exp_number", "order_number", "order_type", "completion_status"))
+    # Bring over results directory to add to dataframe
+
     results.to_csv("test.csv", index=False)
+    ssh.close()
 
 # Entry point of the application
 if __name__ == "__main__":
