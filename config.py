@@ -5,9 +5,7 @@ repo = "https://gitlab.flux.utah.edu/carina/test-experiments.git"
 # os.path.basename(path)
 configfile_path = "~/test-experiments/exp_config.py"
 configfile = "exp_config.py"
-# change to one
-local_verbose = True
-remote_verbose = True
+verbose = True
 # os.path.basename(path)
 results_dir = "~/test-experiments/results"
 results_file = "results.txt"

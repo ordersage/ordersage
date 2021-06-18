@@ -29,17 +29,12 @@ import uuid
 # Configuration file
 import config
 
-LOG = logging.getLogger(__name__)
-
 class RemoteClient():
     def __init__(self, server, portnum, uname, keyfile):
         self.server = server
         self.portnum = portnum
         self.uname = uname
         self.keypath = keyfile
-
-def parse_args():
-    pass
 
 def configure_logging(debug=False, filename='mylog.log'):
     """ This function configures logging facility.
@@ -51,18 +46,28 @@ def configure_logging(debug=False, filename='mylog.log'):
     """
     frmt_str = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
     frmt_out = '%(message)s'
+
     # set up logging to file
-    logging.basicConfig(level=logging.DEBUG,
-                        format=frmt_str,
-                        filename=filename,
-                        filemode='w')
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+    file_handler = logging.FileHandler(filename)
+    f_formatter = logging.Formatter(frmt_str)
+    file_handler.setFormatter(f_formatter)
+    logger.addHandler(file_handler)
 
     # define a handler for console
     console = logging.StreamHandler()
     console.setLevel(logging.DEBUG if debug else logging.INFO)
     formatter = logging.Formatter(frmt_out)
     console.setFormatter(formatter)
-    logging.getLogger().addHandler(console)
+    logger.addHandler(console)
+
+    return logger
+
+LOG = configure_logging(debug=True)
+
+def parse_args():
+    pass
 
 def open_ssh_connection(sshC, timeout=10, max_tries=3):
     """ Attempts to establish and SSH connection to worker node specified in config.
@@ -188,19 +193,19 @@ def initialize_remote_server(sshC, repo, config_path, dest_dir):
 
     # set up results directory and clone repo
     LOG.info("Cloning repo: " + repo)
-    execute_remote_command(ssh, "git clone " + repo, verbose = config.local_verbose)
+    execute_remote_command(ssh, "git clone " + repo, verbose = config.verbose)
 
     # Transfer experiment commands
     LOG.info("Transferring experiment commands from " + config.worker + "...")
     cmd = ["scp", config.user + "@" + config.worker + ":" + config.configfile_path, "."]
-    execute_local_command(ssh, cmd, "initializaRemoteServer", verbose = config.local_verbose)
+    execute_local_command(ssh, cmd, "initializaRemoteServer", verbose = config.verbose)
 
     # Gather system specs
     LOG.info("Gathering machine specs...")
     execute_remote_command(ssh, "uname -r >results/specs.txt")
 
     LOG.info("Running initialization script...")
-    execute_remote_command(ssh, "cd test-experiments && bash initialize.sh", verbose = config.local_verbose)
+    execute_remote_command(ssh, "cd test-experiments && bash initialize.sh", verbose = config.verbose)
 
     # Reboot to clean state and then check if successful
     #reboot(ssh, config.worker)
@@ -225,7 +230,7 @@ def run_remote_experiment(sshC, order, exp_dict, n_runs):
         for i, exp in enumerate(exps):
             cmd = exp_dict.get(exp)
             LOG.info("Running " + cmd + "...")
-            result = execute_remote_command(ssh, "cd test-experiments && " + cmd, verbose = config.remote_verbose)
+            result = execute_remote_command(ssh, "cd test-experiments && " + cmd, verbose = config.verbose)
             #TODO: print out to log, look into most efficient way to add to list
             exp_result = [id, x+1, n_runs, cmd, exp, i, order, result]
             data.append(exp_result)
@@ -238,9 +243,6 @@ def insert_failure(nodename):
     pass
 
 def main():
-
-    configure_logging(debug=True)
-
     # Parse Arguments:
     # hostname, username, keyfile, number of repetitions,
     # git repo, destinstion directory
@@ -263,10 +265,10 @@ def main():
     # scp results directory from remote and rename with timestamp
     ssh = open_ssh_connection(sshC)
     cmd = ["scp", "-r", config.user + "@" + config.worker + ":" + config.results_dir, "."]
-    execute_local_command(ssh, cmd, verbose = config.local_verbose)
+    execute_local_command(ssh, cmd, verbose = config.verbose)
     # timestamp results folder
     filename = datetime.now().strftime("%Y%m%d_%H:%M:%S") + "_results"
-    execute_local_command(ssh, ["mv", "results", filename], verbose = config.local_verbose)
+    execute_local_command(ssh, ["mv", "results", filename], verbose = config.verbose)
 
     # put in list, add to dataframe
     with open(filename + "/" + config.results_file) as f:
