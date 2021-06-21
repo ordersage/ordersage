@@ -190,7 +190,9 @@ def reboot(ssh_client):
     execute_remote_command(ssh_client, "sudo reboot")
 
     # Spin until the machine comes up and is ready for SSH
-    LOG.info("Awaiting completion of reboot for " + config.worker + ", sleeping for 2 minutes...")
+    LOG.info("Awaiting completion of reboot for "
+                + config.worker
+                + ", sleeping for 2 minutes...")
     sleep(120)
 
     while True:
@@ -207,7 +209,10 @@ def reboot(ssh_client):
                     LOG.critical("Failed to reconnect to " + config.worker)
                     return "Failure"
                 else:
-                    LOG.error("Connection attempt to " + server + " timed out, retrying (" + str(n_tries) + " out of " + str(max_tries) + ")...")
+                    LOG.error("Connection attempt to "
+                                + server
+                                + " timed out, retrying (" + str(n_tries)
+                                + " out of " + str(max_tries) + ")...")
                     sleep(60)
 
     LOG.info("Node " + server + " is up at " + str(datetime.today()))
@@ -238,12 +243,22 @@ def initialize_remote_server(repo, worker):
 
     # Transfer experiment commands
     LOG.info("Transferring experiment commands from " + config.worker + "...")
-    cmd = ["scp", config.user + "@" + config.worker + ":" + config.configfile_path, "."]
+    cmd = ["scp",
+            config.user + "@" + config.worker + ":" + config.configfile_path,
+            "."]
     execute_local_command(cmd, "initializa_remote_server")
 
     # Run initialization script. Results directory will be created here
     LOG.info("Running initialization script...")
     execute_remote_command(ssh, "cd test-experiments && bash initialize.sh")
+
+    # Gather machine specs
+    # LOG.info("Transferring env_info.sh to " + config.worker)
+    # cmd = ["scp",
+    #         "env_info.sh",
+    #         config.user + "@" + config.worker + ":" + "/users/carina"]
+    # execute_local_command(cmd, "initializa_remote_server")
+    # execute_remote_command("./env_info.sh")
 
     # Reboot to clean state
     reboot(ssh)
