@@ -141,7 +141,6 @@ def execute_remote_command(ssh_client, cmd, max_tries=1):
             channel.close()
             return "Success"
 
-#TODO: Add print option for stderr
 def execute_local_command(cmd, function_name="execute_local_command", max_tries=1):
     """ Runs commands locally, and captures stdout and stderr. If config.verbose
     is true, stdout will print to terminal.
@@ -197,9 +196,9 @@ def reboot(ssh_client):
 
     while True:
         try:
-            out = run(["nc", "-z", "-v", "-w5", server, "22"],stderr=STDOUT, stdout=PIPE)
-        except:
-            print("In reboot: " + repr(e) + " - " + str(e))
+            out = run(["nc", "-z", "-v", "-w5", config.worker, "22"],stderr=STDOUT, stdout=PIPE)
+        except Exception as ex:
+            print("In reboot: " + repr(ex) + " - " + str(ex))
         else:
             if out.returncode == 0:
                 break
@@ -210,12 +209,12 @@ def reboot(ssh_client):
                     return "Failure"
                 else:
                     LOG.error("Connection attempt to "
-                                + server
+                                + config.worker
                                 + " timed out, retrying (" + str(n_tries)
                                 + " out of " + str(max_tries) + ")...")
                     sleep(60)
 
-    LOG.info("Node " + server + " is up at " + str(datetime.today()))
+    LOG.info("Node " + config.worker + " is up at " + str(datetime.today()))
     return "Success"
 
 def initialize_remote_server(repo, worker):
@@ -276,15 +275,17 @@ def run_remote_experiment(order, exp_dict, n_runs):
     run_data = []
     exps = list(exp_dict.keys())
 
+    # Set seed
+    rand_seed = config.seed if config.seed else time.time()
+    random.seed(rand_seed)
+
     # Begin exp loop n times
     for x in range(n_runs):
-        rand_seed = int(time.time())
         id = uuid.uuid1()
         ssh = open_ssh_connection()
 
         LOG.info("Running " + order + " loop " + str(x + 1) + " of " + str(n_runs))
         if order == "random":
-            random.seed(rand_seed)
             random.shuffle(exps)
 
         run_start = time.process_time()

@@ -16,3 +16,4 @@ results_file = "results.txt"
 # Options
 verbose = True
 reboot = False
+seed = None
