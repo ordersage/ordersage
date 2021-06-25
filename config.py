@@ -9,7 +9,6 @@ repo = "https://gitlab.flux.utah.edu/carina/test-experiments.git"
 
 # Filepaths
 configfile_path = "~/test-experiments/exp_config.py"
-
 results_dir = "~/test-experiments/results"
 results_file = "results.txt"
 

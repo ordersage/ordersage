@@ -249,15 +249,15 @@ def initialize_remote_server(repo, worker):
 
     # Run initialization script. Results directory will be created here
     LOG.info("Running initialization script...")
-    execute_remote_command(ssh, "cd test-experiments && bash initialize.sh")
+    execute_remote_command(ssh, "cd test-experiments && ./initialize.sh")
 
     # Gather machine specs
-    # LOG.info("Transferring env_info.sh to " + config.worker)
-    # cmd = ["scp",
-    #         "env_info.sh",
-    #         config.user + "@" + config.worker + ":" + "/users/carina"]
-    # execute_local_command(cmd, "initializa_remote_server")
-    # execute_remote_command("./env_info.sh")
+    LOG.info("Transferring env_info.sh to " + config.worker)
+    cmd = ["scp",
+            "env_info.sh",
+            config.user + "@" + config.worker + ":" + config.results_dir]
+    execute_local_command(cmd, "initialize_remote_server")
+    execute_remote_command(ssh, "cd test-experiments/results && ./env_info.sh")
 
     # Reboot to clean state
     reboot(ssh)
@@ -336,9 +336,15 @@ def main():
                                 columns=("run_uuid", "run_num", "total_runs",
                                         "order_type", "random_seed", "time_start",
                                         "time_stop"))
+    # Add in later
+    """
+    "timestamp", "nodeid",
+    "nodeuuid", "arch", "gcc_ver", "total_mem",
+    "mem_clock_speed", "nthreads", "nsockets",
+    "cpu_model", "kernel_release", "os_release"
+    """
 
     # scp results directory from worker and rename with timestamp
-    ssh = open_ssh_connection()
     cmd = ["scp", "-r", config.user + "@" + config.worker + ":" + config.results_dir, "."]
     execute_local_command(cmd)
 
@@ -355,7 +361,6 @@ def main():
     exp_results_csv["result"] = results
     exp_results_csv.to_csv(results_dir + "/experiment_results.csv", index=False)
     run_results_csv.to_csv(results_dir + "/run_results.csv", index=False)
-    ssh.close()
 
 # Entry point of the application
 if __name__ == "__main__":

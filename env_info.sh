@@ -1,7 +1,5 @@
 #!/bin/bash
 
-cd "$(dirname ${BASH_SOURCE[0]})"/..
-
 #########################
 ### Initial Variables ###
 #########################
@@ -16,7 +14,7 @@ nodeuuid=$(cat /var/emulab/boot/nodeuuid)
 echo -n "Getting Environment Information - "
 date
 export DEBIAN_FRONTEND=noninteractive
-sudo apt-get update -y
+#sudo apt-get update -y
 sudo apt-get install hwinfo numactl -y
 gcc_ver=$(gcc --version | grep gcc | awk '{print $4}')
 
@@ -43,8 +41,8 @@ else
 fi
 
 # Hash
-# version_hash=$(git rev-parse HEAD)
+version_hash=$(git rev-parse HEAD)
 
 # Write to file
-echo "timestamp,nodeid,nodeuuid,arch,gcc_ver,total_mem,mem_clock_speed,nthreads,nsockets,cpu_model,kernel_release,os_release" > ~/env_out.csv
-echo "$timestamp,$nodeid,$nodeuuid,$arch,$gcc_ver,$total_mem,$mem_clock_speed,$nthreads,$nsockets,$cpu_model,$kernel_release,$os_release" >> ~/env_out.csv
+echo "timestamp,nodeid,nodeuuid,arch,gcc_ver,total_mem,mem_clock_speed,nthreads,nsockets,cpu_model,kernel_release,os_release" > env_out.csv
+echo "$timestamp,$nodeid,$nodeuuid,$arch,$gcc_ver,$total_mem,$mem_clock_speed,$nthreads,$nsockets,$cpu_model,$kernel_release,$os_release" >> env_out.csv
