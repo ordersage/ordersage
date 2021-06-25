@@ -245,6 +245,12 @@ def initialize_remote_server(repo, worker):
                     exec_info=True)
         quit()
 
+    # Remove old repo if present
+    repo_short = repo.split("/")[-1]
+    dir_name = repo_short[:-len(".git")] if repo_short.endswith(".git") else repo_short
+    LOG.info("Trying to remove old directory: " + dir_name + "...")
+    execute_remote_command(ssh, "rm -rf " + dir_name)
+ 
     # Clone experimets repo
     LOG.info("Cloning repo: " + repo + "...")
     execute_remote_command(ssh, "git clone " + repo)
