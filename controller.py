@@ -31,6 +31,9 @@ import uuid
 # Configuration file
 import config
 
+# Config file parsing
+from configparser import ConfigParser
+
 def configure_logging(debug=False, filename='mylog.log'):
     """ This function configures logging facility.
     The current setup is for printing log messages onto console AND onto the file.
@@ -62,7 +65,12 @@ def configure_logging(debug=False, filename='mylog.log'):
 LOG = configure_logging(debug = config.verbose, filename = "logfile.log")
 
 def parse_args():
-    pass
+    parser = argparse.ArgumentParser(description='Description of supported command-line arguments:')    
+    parser.add_argument('--cloudlab', action='store_true',
+                        help='Switch allowing running experiments on CloudLab machines')
+    parser.add_argument('--cloudlab_config', type=str, default='cloudlab.config',
+                        help='Path to config file with CloudLab-related settings')
+    return parser.parse_args()
 
 def open_ssh_connection(timeout=10, max_tries=3):
     """ Attemps to establish an SSH connection to the worker node specified in
@@ -236,6 +244,12 @@ def initialize_remote_server(repo, worker):
                     exec_info=True)
         quit()
 
+    # Remove old repo if present
+    repo_short = repo.split("/")[-1]
+    dir_name = repo_short[:-len(".git")] if repo_short.endswith(".git") else repo_short
+    LOG.info("Trying to remove old directory: " + dir_name + "...")
+    execute_remote_command(ssh, "rm -rf " + dir_name)
+ 
     # Clone experimets repo
     LOG.info("Cloning repo: " + repo + "...")
     execute_remote_command(ssh, "git clone " + repo)
@@ -309,8 +323,45 @@ def run_remote_experiment(order, exp_dict, n_runs):
         ssh.close()
     return exp_data,run_data
 
+def access_provider_wrapper(args):
+    if args.cloudlab:
+        LOG.info("Using CloudLab as a platform for running experiments")
+        access_cloudlab(args)
+    else:
+        LOG.info("Using pre-allocate machine for running experiments")
+
+def access_cloudlab(args, timeout=10):
+    config_parser = ConfigParser() 
+    config_parser.read(args.cloudlab_config)
+    
+    try:
+        hostname = config_parser.get("DEFAULT", "hostname")
+        port_num = config_parser.get("DEFAULT", "port_num")
+        user = config_parser.get("DEFAULT", "user")
+        keyfile = config_parser.get("DEFAULT", "keyfile")
+    except Exception as e:
+        LOG.error("Bad CloudLab config file: required option is missing")
+        raise ValueError()
+    
+    sshkey = paramiko.Ed25519Key.from_private_key_file(keyfile)
+
+    try:
+        cloudlab_ssh = paramiko.SSHClient()
+        cloudlab_ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        cloudlab_ssh.connect(hostname=hostname, port=port_num,
+                             username=user, pkey=sshkey,
+                             timeout=timeout)
+    except:
+        LOG.error("Cannot establish ssh access to CloudLab platform")
+        raise ConnectionError()
+    else:
+        LOG.info("Established ssh access to CloudLab platform")
 
 def main():
+    args = parse_args() 
+
+    access_provider_wrapper(args)
+
     # Set up worker node
     initialize_remote_server(config.repo, config.worker)
 

@@ -1,0 +1,4 @@
+.git/
+*_results/
+__pycache__/
+logfile.log
