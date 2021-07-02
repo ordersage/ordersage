@@ -1,4 +1,4 @@
 .git/
 *_results/
 __pycache__/
--rw-r--r--   1 dmitry  staff   9071 Jun 22 15:20 logfile.log
+logfile.log
