@@ -34,6 +34,10 @@ import config
 # Config file parsing
 from configparser import ConfigParser
 
+
+########################
+### Configure Log file ###
+########################
 def configure_logging(debug=False, filename='mylog.log'):
     """ This function configures logging facility.
     The current setup is for printing log messages onto console AND onto the file.
@@ -64,14 +68,20 @@ def configure_logging(debug=False, filename='mylog.log'):
 
 LOG = configure_logging(debug = config.verbose, filename = "logfile.log")
 
+######################################
+### Parse arguments to application ###
+######################################
 def parse_args():
-    parser = argparse.ArgumentParser(description='Description of supported command-line arguments:')    
+    parser = argparse.ArgumentParser(description='Description of supported command-line arguments:')
     parser.add_argument('--cloudlab', action='store_true',
                         help='Switch allowing running experiments on CloudLab machines')
     parser.add_argument('--cloudlab_config', type=str, default='cloudlab.config',
                         help='Path to config file with CloudLab-related settings')
     return parser.parse_args()
 
+################################
+### Establish SSH Connection ###
+################################
 def open_ssh_connection(timeout=10, max_tries=3):
     """ Attemps to establish an SSH connection to the worker node specified in
     config. If successful, returns an SSHClient with open connection to the worker.
@@ -101,6 +111,9 @@ def open_ssh_connection(timeout=10, max_tries=3):
             LOG.info("SSH connection to " + config.worker + " successful.")
             return ssh
 
+######################################
+### Execute command on worker node ###
+######################################
 def execute_remote_command(ssh_client, cmd, max_tries=1):
     """ Executes command on worker node via pre-established SSHClient.
     Captures stdout continuously as command runs and blocks until remote command
@@ -149,6 +162,9 @@ def execute_remote_command(ssh_client, cmd, max_tries=1):
             channel.close()
             return "Success"
 
+###############################
+### Execute command locally ###
+###############################
 def execute_local_command(cmd, function_name="execute_local_command", max_tries=1):
     """ Runs commands locally, and captures stdout and stderr. If config.verbose
     is true, stdout will print to terminal.
@@ -182,6 +198,9 @@ def execute_local_command(cmd, function_name="execute_local_command", max_tries=
 
     return "Success"
 
+##########################
+### Reboot worker node ###
+##########################
 def reboot(ssh_client):
     """ Reboots worker node then checks periodically if it is back up. If
     config.reboot is False, it will skip this command (for debugging only)
@@ -204,7 +223,9 @@ def reboot(ssh_client):
 
     while True:
         try:
-            out = run(["nc", "-z", "-v", "-w5", config.worker, "22"],stderr=STDOUT, stdout=PIPE)
+            out = run(["nc", "-z", "-v", "-w5", config.worker, "22"],
+                    stderr=STDOUT,
+                    stdout=PIPE)
         except Exception as ex:
             print("In reboot: " + repr(ex) + " - " + str(ex))
         else:
@@ -225,6 +246,9 @@ def reboot(ssh_client):
     LOG.info("Node " + config.worker + " is up at " + str(datetime.today()))
     return "Success"
 
+##############################
+### Initialize worker node ###
+##############################
 def initialize_remote_server(repo, worker):
     """ Sets up worker node to begin running experiments. Clones experiment
     repo, runs initialization script, and facilitates collectin of machine
@@ -249,7 +273,7 @@ def initialize_remote_server(repo, worker):
     dir_name = repo_short[:-len(".git")] if repo_short.endswith(".git") else repo_short
     LOG.info("Trying to remove old directory: " + dir_name + "...")
     execute_remote_command(ssh, "rm -rf " + dir_name)
- 
+
     # Clone experimets repo
     LOG.info("Cloning repo: " + repo + "...")
     execute_remote_command(ssh, "git clone " + repo)
@@ -271,19 +295,20 @@ def initialize_remote_server(repo, worker):
             "env_info.sh",
             config.user + "@" + config.worker + ":" + config.results_dir]
     execute_local_command(cmd, "initialize_remote_server")
-    execute_remote_command(ssh, "cd test-experiments/results && ./env_info.sh")
+    execute_remote_command(ssh, "cd " + config.results_dir + " && ./env_info.sh")
 
     # Reboot to clean state
     reboot(ssh)
 
     ssh.close()
 
+#################################################################
+### Run remote experiments on worker node and record metadata ###
+#################################################################
 def run_remote_experiment(order, exp_dict, n_runs):
     """ Runs experiments on worker node in either a fixed, arbitrary order or
     a random order. Runs will be executed 'n_runs' times, and results will be saved
     on the worker end. Upon completion, each run and its metadata will be stored.
-
-    TODO: Create second csv with uuid and metadata
     """
     exp_data = []
     run_data = []
@@ -323,6 +348,9 @@ def run_remote_experiment(order, exp_dict, n_runs):
         ssh.close()
     return exp_data,run_data
 
+######################
+### Access wrapper ###
+######################
 def access_provider_wrapper(args):
     if args.cloudlab:
         LOG.info("Using CloudLab as a platform for running experiments")
@@ -330,10 +358,13 @@ def access_provider_wrapper(args):
     else:
         LOG.info("Using pre-allocate machine for running experiments")
 
+#############################################
+### Access cloudlab via an SSH connection ###
+#############################################
 def access_cloudlab(args, timeout=10):
-    config_parser = ConfigParser() 
+    config_parser = ConfigParser()
     config_parser.read(args.cloudlab_config)
-    
+
     try:
         hostname = config_parser.get("DEFAULT", "hostname")
         port_num = config_parser.get("DEFAULT", "port_num")
@@ -342,7 +373,7 @@ def access_cloudlab(args, timeout=10):
     except Exception as e:
         LOG.error("Bad CloudLab config file: required option is missing")
         raise ValueError()
-    
+
     sshkey = paramiko.Ed25519Key.from_private_key_file(keyfile)
 
     try:
@@ -357,9 +388,11 @@ def access_cloudlab(args, timeout=10):
     else:
         LOG.info("Established ssh access to CloudLab platform")
 
+#####################
+### Main function ###
+#####################
 def main():
-    args = parse_args() 
-
+    args = parse_args()
     access_provider_wrapper(args)
 
     # Set up worker node
@@ -387,15 +420,9 @@ def main():
                                 columns=("run_uuid", "run_num", "total_runs",
                                         "order_type", "random_seed", "time_start",
                                         "time_stop"))
-    # Add in later
-    """
-    "timestamp", "nodeid",
-    "nodeuuid", "arch", "gcc_ver", "total_mem",
-    "mem_clock_speed", "nthreads", "nsockets",
-    "cpu_model", "kernel_release", "os_release"
-    """
 
     # scp results directory from worker and rename with timestamp
+    LOG.info("Transferring results from " + config.worker + " to local")
     cmd = ["scp", "-r", config.user + "@" + config.worker + ":" + config.results_dir, "."]
     execute_local_command(cmd)
 
@@ -409,11 +436,19 @@ def main():
     results = [x.strip() for x in results]
 
     # Add results to dataframe and save as csv
+    LOG.info("Adding results to experiment metadata")
     exp_results_csv["result"] = results
     exp_results_csv.to_csv(results_dir + "/experiment_results.csv", index=False)
     run_results_csv.to_csv(results_dir + "/run_results.csv", index=False)
 
-# Entry point of the application
+    # Add config file to results dir
+    execute_local_command(["mv", "exp_config.py", results_dir])
+
+    LOG.info("Experiemnts successfully run and stored")
+
+######################################
+### Entry point of the application ###
+######################################
 if __name__ == "__main__":
     main()
 else:
