@@ -114,7 +114,7 @@ def open_ssh_connection(timeout=10, max_tries=3):
 ######################################
 ### Execute command on worker node ###
 ######################################
-def execute_remote_command(ssh_client, cmd, max_tries=1):
+def execute_remote_command(ssh_client, cmd, max_tries=3, timeout=10):
     """ Executes command on worker node via pre-established SSHClient.
     Captures stdout continuously as command runs and blocks until remote command
     finishes execution and exit status is received. If verbose option is on, stdout
@@ -145,19 +145,22 @@ def execute_remote_command(ssh_client, cmd, max_tries=1):
                         LOG.debug(o)
         except Exception as e:
             n_tries += 1
-            LOG.error("SSH exception while executing " + cmd)
+            LOG.error("SSH exception while executing '" + cmd + "'. Attempt "
+                        + str(n_tries) + " of " + str(max_tries))
             if n_tries >= max_tries:
-                LOG.critical("Failed to execute " + cmd, exec_info = True)
+                LOG.critical("Failed to execute " + cmd, exc_info = True)
                 return "Failure"
             else:
                 LOG.info("Retrying...")
+                sleep(timeout)
         else:
             # Blocks until command finishes execution
             exit_status = channel.recv_exit_status()
+            # Here is where errors on the remote side are handled
             # Retry here as well?
             if exit_status != 0:
-                LOG.error("Error executing command: " + cmd
-                            + ". Exit status: " + str(exit_status))
+                LOG.error("Error executing command: '" + cmd
+                            + "'. Exit status: " + str(exit_status))
                 return "Failure"
             channel.close()
             return "Success"
@@ -185,6 +188,7 @@ def execute_local_command(cmd, function_name="execute_local_command", max_tries=
                 return "Failure"
             else:
                 LOG.info("Retrying...")
+                sleep(timeout)
         else:
             if out.returncode == 0:
                 stdout = out.stdout.decode('utf-8')
