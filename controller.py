@@ -114,13 +114,11 @@ def open_ssh_connection(timeout=10, max_tries=3):
 ######################################
 ### Execute command on worker node ###
 ######################################
-def execute_remote_command(ssh_client, cmd, max_tries=3, timeout=10):
+def execute_remote_command(ssh_client, cmd, max_tries=1, timeout=10):
     """ Executes command on worker node via pre-established SSHClient.
     Captures stdout continuously as command runs and blocks until remote command
     finishes execution and exit status is received. If verbose option is on, stdout
     will print to terminal.
-
-    TODO: Check error handling
     """
     n_tries = 0
 
@@ -141,7 +139,7 @@ def execute_remote_command(ssh_client, cmd, max_tries=3, timeout=10):
                     out = output.decode('utf-8')
                     # Split by newline
                     out = out.splitlines()
-                    for o in out:
+                    for o in filter(None, out):
                         LOG.debug(o)
         except Exception as e:
             n_tries += 1
@@ -171,35 +169,31 @@ def execute_remote_command(ssh_client, cmd, max_tries=3, timeout=10):
 def execute_local_command(cmd, function_name="execute_local_command", max_tries=1):
     """ Runs commands locally, and captures stdout and stderr. If config.verbose
     is true, stdout will print to terminal.
-
-    TODO: Check error handling
     """
     n_tries = 0
     while True:
         try:
             out = subprocess.run(cmd, stderr=STDOUT, stdout=PIPE)
+            stdout = out.stdout.decode('utf-8')
+            stdout = stdout.splitlines()
+            # Print stdout
+            for o in filter(None, stdout):
+                LOG.debug(o)
+            # Raises exception if exit status is non-zero
+            out.check_returncode()
         except Exception as ex:
             n_tries += 1
-            LOG.error("Exception while executing " + " ".join(cmd)
-                        + ". Error #" + str(n_tries) + " of "
+            LOG.error("Exception while executing '" + " ".join(cmd)
+                        + "'. Attempt " + str(n_tries) + " of "
                         + str(max_tries))
-            if n_tries > max_tries:
-                LOG.critical("Failed to execute " + " ".join(cmd))
+            LOG.error(str(ex))
+            if n_tries >= max_tries:
+                LOG.critical("Failed to execute '" + " ".join(cmd) + "'")
                 return "Failure"
             else:
                 LOG.info("Retrying...")
-                sleep(timeout)
         else:
-            if out.returncode == 0:
-                stdout = out.stdout.decode('utf-8')
-                if stdout:
-                    LOG.info(out.stdout.decode('utf-8'))
-                break
-            else:
-                LOG.error(out.stdout.decode('utf-8'))
-                # Retry here?
-                return "Failure"
-
+            break
     return "Success"
 
 ##########################
@@ -237,7 +231,7 @@ def reboot(ssh_client):
                 break
             else:
                 n_tries += 1
-                if n_tries > max_tries:
+                if n_tries >= max_tries:
                     LOG.critical("Failed to reconnect to " + config.worker)
                     return "Failure"
                 else:
