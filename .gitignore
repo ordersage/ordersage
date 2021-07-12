@@ -2,3 +2,4 @@
 *_results/
 __pycache__/
 logfile.log
+cloudlab_allocator
