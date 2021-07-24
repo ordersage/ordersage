@@ -34,7 +34,6 @@ import config
 # Config file parsing
 from configparser import ConfigParser
 
-
 ########################
 ### Configure Log file ###
 ########################
@@ -67,6 +66,14 @@ def configure_logging(debug=False, filename='mylog.log'):
     return logger
 
 LOG = configure_logging(debug = config.verbose, filename = "logfile.log")
+
+# Optional code for integration with CloudLab
+try:
+    from cloudlab_allocator.orchestration import parse_config, \
+        allocate_nodes, deallocate_nodes, CloudLabAllocation
+    LOG.debug("Imported code for CloudLab integration.")
+except:
+    LOG.debug("Unable to import code for CloudLab integration. Proceeding without it.")
 
 ######################################
 ### Parse arguments to application ###
@@ -352,46 +359,62 @@ def run_remote_experiment(order, exp_dict, n_runs):
 def access_provider_wrapper(args):
     if args.cloudlab:
         LOG.info("Using CloudLab as a platform for running experiments")
-        access_cloudlab(args)
+        return access_cloudlab(args)
     else:
         LOG.info("Using pre-allocate machine for running experiments")
+        return None
 
-#############################################
-### Access cloudlab via an SSH connection ###
-#############################################
-def access_cloudlab(args, timeout=10):
+##############################################
+### Access Cloudlab and allocate resources ###
+##############################################
+def access_cloudlab(args):
     config_parser = ConfigParser()
     config_parser.read(args.cloudlab_config)
 
     try:
-        hostname = config_parser.get("DEFAULT", "hostname")
-        port_num = config_parser.get("DEFAULT", "port_num")
-        user = config_parser.get("DEFAULT", "user")
-        keyfile = config_parser.get("DEFAULT", "keyfile")
+        site = config_parser.get("HARDWARE", "site")
+        hw_type = config_parser.get("HARDWARE", "hw_type")
+        node_count = int(config_parser.get("HARDWARE", "node_count"))
     except Exception as e:
         LOG.error("Bad CloudLab config file: required option is missing")
         raise ValueError()
 
-    sshkey = paramiko.Ed25519Key.from_private_key_file(keyfile)
+    user, project, certificate, private_key, public_key, geni_cache = \
+        parse_config(args.cloudlab_config)
 
-    try:
-        cloudlab_ssh = paramiko.SSHClient()
-        cloudlab_ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        cloudlab_ssh.connect(hostname=hostname, port=port_num,
-                             username=user, pkey=sshkey,
-                             timeout=timeout)
-    except:
-        LOG.error("Cannot establish ssh access to CloudLab platform")
-        raise ConnectionError()
+    LOG.info("Starting to allocate nodes on CloudLab.")
+    allocation = allocate_nodes(node_count, site, hw_type, \
+                                user, project, certificate, \
+                                private_key, public_key, geni_cache, \
+                                LOG)
+    LOG.info("Done allocating nodes on CloudLab. Hostnames: " + \
+             str(allocation.hostnames))
+    return allocation
+
+#########################
+### Release resources ###
+#########################
+def release_resources_wrapper(args, allocation):
+    if args.cloudlab:
+        LOG.info("Calling CLoudLab's function for releasing resources")
+        release_cloudlab(args, allocation)
     else:
-        LOG.info("Established ssh access to CloudLab platform")
+        pass
+
+##############################################
+### Release Cloudlab's resources #############
+##############################################
+def release_cloudlab(args, allocation):
+    deallocate_nodes(allocation, LOG)
+    LOG.info("Done deallocating nodes on CloudLab.")
 
 #####################
 ### Main function ###
 #####################
 def main():
     args = parse_args()
-    access_provider_wrapper(args)
+    # Allocate resources according to provided arguments
+    allocation = access_provider_wrapper(args)
 
     # Set up worker node
     initialize_remote_server(config.repo, config.worker)
@@ -443,6 +466,9 @@ def main():
     execute_local_command(["mv", "exp_config.py", results_dir])
 
     LOG.info("Experiemnts successfully run and stored")
+
+    # Releasing allocated resources
+    release_resources_wrapper(args, allocation)
 
 ######################################
 ### Entry point of the application ###
