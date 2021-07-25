@@ -61,11 +61,11 @@ Users must fill out `config.py` prior to usage of the controller script. Configu
 
 ### Experiment Repository Requirements
 
-#### Initialization
+##### Initialization
 
 Experiment repositories should contain a script `initialization.sh` that sets up the worker node(s) to ready them for experimentation. Our controller script will run the script before experimentation and reboot to achieve a clean state.
 
-#### Experiment Configuration File
+##### Experiment Configuration File
 
 The controller script requires the set of experiments to be run in the form of their command line command and arguments. For example:
 
@@ -85,7 +85,7 @@ Experiments will be executed in a fixed, arbitrary order (known as a run). A run
 
 Results will be saved to a timestamped folder in the `sigmetrics-tool` repository. A single results folder contains metadata of each run (found in `run_results.csv`) in addition the results of each experiment (in `exp_results.csv`), and the machine specs of the worker node(s) (in `env_out.csv`). Experiment results will include the returned result of the experiment, as well as a report of success or failure.
 
-#### Result Requirments
+##### Result Requirements
 
 In order to automate the collection of results and statistical analysis of experiment order, the user must meet some requirements when gathering results:
 
