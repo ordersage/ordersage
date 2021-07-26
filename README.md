@@ -30,7 +30,7 @@ python controller.py
 ## Using CloudLab resources
 
 In order to use the code for allocating CloudLab nodes, which is available at:
-[https://gitlab.flux.utah.edu/emulab/cloudlab_allocator`](https://gitlab.flux.utah.edu/emulab/cloudlab_allocator),
+[https://gitlab.flux.utah.edu/emulab/cloudlab_allocator](https://gitlab.flux.utah.edu/emulab/cloudlab_allocator),
 clone that repo *inside* the directory with the files from this repo:
 ```
 git clone https://gitlab.flux.utah.edu/emulab/cloudlab_allocator.git

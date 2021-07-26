@@ -34,6 +34,9 @@ import config
 # Config file parsing
 from configparser import ConfigParser
 
+# See debug info from paramiko
+logging.getLogger("paramiko").setLevel(logging.DEBUG)
+
 ########################
 ### Configure Log file ###
 ########################
@@ -70,7 +73,7 @@ LOG = configure_logging(debug = config.verbose, filename = "logfile.log")
 # Optional code for integration with CloudLab
 try:
     from cloudlab_allocator.orchestration import parse_config, \
-        allocate_nodes, deallocate_nodes, CloudLabAllocation
+        allocate_nodes, deallocate_nodes, Allocation
     LOG.debug("Imported code for CloudLab integration.")
 except:
     LOG.debug("Unable to import code for CloudLab integration. Proceeding without it.")
@@ -89,20 +92,22 @@ def parse_args():
 ################################
 ### Establish SSH Connection ###
 ################################
-def open_ssh_connection(timeout=10, max_tries=3):
-    """ Attemps to establish an SSH connection to the worker node specified in
-    config. If successful, returns an SSHClient with open connection to the worker.
+def open_ssh_connection(worker, timeout=10, max_tries=10):
+    """ Attemps to establish an SSH connection to the specified worker node.
+    If successful, returns an SSHClient with open connection to the worker.
     """
+    LOG.debug("Starting to open ssh connection")
     n_tries = 0
     ssh = paramiko.SSHClient()
     # what if it is an rsa key?
     sshkey = paramiko.Ed25519Key.from_private_key_file(config.keyfile)
+    LOG.debug("Loaded ssh key from:" + config.keyfile)
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     # SSH Connect
     while True:
         try:
-            ssh.connect(hostname = config.worker, port = config.port_num,
+            ssh.connect(hostname = worker, port = config.port_num,
                         username = config.user, pkey = sshkey,
                         timeout = timeout)
         except Exception as e:
@@ -110,12 +115,12 @@ def open_ssh_connection(timeout=10, max_tries=3):
             LOG.error("In open_ssh_connection: " + repr(e) + " - " + str(e))
             LOG.info("Error #" + str(n_tries) + " of " + str(max_tries) + ".")
             if n_tries >= max_tries:
-                LOG.error("Failure to connect to " + config.worker)
+                LOG.error("Failure to connect to " + worker)
                 raise ConnectionError()
             else:
                 LOG.info("Retrying...")
         else:
-            LOG.info("SSH connection to " + config.worker + " successful.")
+            LOG.info("SSH connection to " + worker + " successful.")
             return ssh
 
 ######################################
@@ -206,7 +211,7 @@ def execute_local_command(cmd, function_name="execute_local_command", max_tries=
 ##########################
 ### Reboot worker node ###
 ##########################
-def reboot(ssh_client):
+def reboot(ssh_client, worker):
     """ Reboots worker node then checks periodically if it is back up. If
     config.reboot is False, it will skip this command (for debugging only)
     """
@@ -222,13 +227,13 @@ def reboot(ssh_client):
 
     # Spin until the machine comes up and is ready for SSH
     LOG.info("Awaiting completion of reboot for "
-                + config.worker
+                + worker
                 + ", sleeping for 2 minutes...")
     sleep(120)
 
     while True:
         try:
-            out = run(["nc", "-z", "-v", "-w5", config.worker, "22"],
+            out = run(["nc", "-z", "-v", "-w5", worker, "22"],
                     stderr=STDOUT,
                     stdout=PIPE)
         except Exception as ex:
@@ -239,16 +244,16 @@ def reboot(ssh_client):
             else:
                 n_tries += 1
                 if n_tries >= max_tries:
-                    LOG.critical("Failed to reconnect to " + config.worker)
+                    LOG.critical("Failed to reconnect to " + worker)
                     return "Failure"
                 else:
                     LOG.error("Connection attempt to "
-                                + config.worker
+                                + worker
                                 + " timed out, retrying (" + str(n_tries)
                                 + " out of " + str(max_tries) + ")...")
                     sleep(60)
 
-    LOG.info("Node " + config.worker + " is up at " + str(datetime.today()))
+    LOG.info("Node " + worker + " is up at " + str(datetime.today()))
     return "Success"
 
 ##############################
@@ -267,9 +272,9 @@ def initialize_remote_server(repo, worker):
 
     # Attemp to connect to server, and quit if failed
     try:
-        ssh = open_ssh_connection()
+        ssh = open_ssh_connection(worker)
     except:
-        LOG.critical("Failure to connect to " + config.worker,
+        LOG.critical("Failure to connect to " + worker,
                     exec_info=True)
         quit()
 
@@ -284,9 +289,10 @@ def initialize_remote_server(repo, worker):
     execute_remote_command(ssh, "git clone " + repo)
 
     # Transfer experiment commands
-    LOG.info("Transferring experiment commands from " + config.worker + "...")
+    LOG.info("Transferring experiment commands from " + worker + "...")
     cmd = ["scp",
-            config.user + "@" + config.worker + ":" + config.configfile_path,
+           "-o", "StrictHostKeyChecking=no",
+            config.user + "@" + worker + ":" + config.configfile_path,
             "."]
     execute_local_command(cmd, "initializa_remote_server")
 
@@ -295,22 +301,23 @@ def initialize_remote_server(repo, worker):
     execute_remote_command(ssh, "cd test-experiments && ./initialize.sh")
 
     # Gather machine specs
-    LOG.info("Transferring env_info.sh to " + config.worker)
+    LOG.info("Transferring env_info.sh to " + worker)
     cmd = ["scp",
+            "-o", "StrictHostKeyChecking=no",
             "env_info.sh",
-            config.user + "@" + config.worker + ":" + config.results_dir]
+            config.user + "@" + worker + ":" + config.results_dir]
     execute_local_command(cmd, "initialize_remote_server")
     execute_remote_command(ssh, "cd " + config.results_dir + " && ./env_info.sh")
 
     # Reboot to clean state
-    reboot(ssh)
+    reboot(ssh, worker)
 
     ssh.close()
 
 #################################################################
 ### Run remote experiments on worker node and record metadata ###
 #################################################################
-def run_remote_experiment(order, exp_dict, n_runs):
+def run_remote_experiment(worker, order, exp_dict, n_runs):
     """ Runs experiments on worker node in either a fixed, arbitrary order or
     a random order. Runs will be executed 'n_runs' times, and results will be saved
     on the worker end. Upon completion, each run and its metadata will be stored.
@@ -326,7 +333,7 @@ def run_remote_experiment(order, exp_dict, n_runs):
     # Begin exp loop n times
     for x in range(n_runs):
         id = uuid.uuid1()
-        ssh = open_ssh_connection()
+        ssh = open_ssh_connection(worker)
 
         LOG.info("Running " + order + " loop " + str(x + 1) + " of " + str(n_runs))
         if order == "random":
@@ -349,7 +356,7 @@ def run_remote_experiment(order, exp_dict, n_runs):
         run_results = [id, x, n_runs, order, rand_seed, run_start, run_stop]
         run_data.append(run_results)
 
-        reboot(ssh)
+        reboot(ssh, worker)
         ssh.close()
     return exp_data,run_data
 
@@ -362,7 +369,7 @@ def access_provider_wrapper(args):
         return access_cloudlab(args)
     else:
         LOG.info("Using pre-allocate machine for running experiments")
-        return None
+        return Allocation([config.worker])
 
 ##############################################
 ### Access Cloudlab and allocate resources ###
@@ -408,16 +415,13 @@ def release_cloudlab(args, allocation):
     deallocate_nodes(allocation, LOG)
     LOG.info("Done deallocating nodes on CloudLab.")
 
-#####################
-### Main function ###
-#####################
-def main():
-    args = parse_args()
-    # Allocate resources according to provided arguments
-    allocation = access_provider_wrapper(args)
+##########################################################
+### Workflow for single-node experimentation #############
+##########################################################
+def run_single_node(worker):
 
     # Set up worker node
-    initialize_remote_server(config.repo, config.worker)
+    initialize_remote_server(config.repo, worker)
 
     # Read in commands to run experiments
     config_file = os.path.basename(config.configfile_path)
@@ -428,8 +432,8 @@ def main():
     exp_dict = {i : exps[i] for i in range(0, len(exps))}
 
     # Run experiments, returns lists to add to dataframe
-    fixed_exp, fixed_run = run_remote_experiment("fixed", exp_dict, 1)
-    random_exp, random_run = run_remote_experiment("random", exp_dict, 1)
+    fixed_exp, fixed_run = run_remote_experiment(worker, "fixed", exp_dict, 1)
+    random_exp, random_run = run_remote_experiment(worker, "random", exp_dict, 1)
 
     # Create dataframe of individual experiments for csv
     exp_results_csv = pd.DataFrame(fixed_exp + random_exp,
@@ -443,8 +447,9 @@ def main():
                                         "time_stop"))
 
     # scp results directory from worker and rename with timestamp
-    LOG.info("Transferring results from " + config.worker + " to local")
-    cmd = ["scp", "-r", config.user + "@" + config.worker + ":" + config.results_dir, "."]
+    LOG.info("Transferring results from " + worker + " to local")
+    # "-o StrictHostKeyChecking=no" is supposed to help avoid answering "yes" for new machines
+    cmd = ["scp", "-o", "StrictHostKeyChecking=no", "-r", config.user + "@" + worker + ":" + config.results_dir, "."]
     execute_local_command(cmd)
 
     # Timestamp results folder
@@ -465,7 +470,29 @@ def main():
     # Add config file to results dir
     execute_local_command(["mv", "exp_config.py", results_dir])
 
-    LOG.info("Experiemnts successfully run and stored")
+    LOG.info("Experiemnts successfully run on single node (%s) and stored" % worker)
+
+###################################################################
+### Workflow for experimentation using multiple-nodes #############
+###################################################################
+def run_multiple_nodes(worker_list):
+    LOG.info("Still needs to be implemented. Doing nothing now.")
+
+#####################
+### Main function ###
+#####################
+def main():
+    args = parse_args()
+    # Allocate resources according to provided arguments
+    allocation = access_provider_wrapper(args)
+
+    if len(allocation.hostnames) == 1:
+        worker = allocation.hostnames[0]
+        run_single_node(worker)
+    elif len(allocation.hostnames) > 1:
+        run_multiple_nodes(allocation.hostnames)
+    else:
+        LOG.error("Something went wrong. No nodes allocated")
 
     # Releasing allocated resources
     release_resources_wrapper(args, allocation)
