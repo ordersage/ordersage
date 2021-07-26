@@ -99,16 +99,14 @@ def open_ssh_connection(worker, timeout=10, max_tries=10):
     LOG.debug("Starting to open ssh connection")
     n_tries = 0
     ssh = paramiko.SSHClient()
-    # what if it is an rsa key?
-    sshkey = paramiko.Ed25519Key.from_private_key_file(config.keyfile)
-    LOG.debug("Loaded ssh key from:" + config.keyfile)
+    ssh.load_system_host_keys()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     # SSH Connect
     while True:
         try:
             ssh.connect(hostname = worker, port = config.port_num,
-                        username = config.user, pkey = sshkey,
+                        username = config.user, key_filename=config.keyfile,
                         timeout = timeout)
         except Exception as e:
             n_tries += 1
