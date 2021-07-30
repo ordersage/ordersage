@@ -28,8 +28,9 @@ import numpy as np
 # uuid library
 import uuid
 
-# Configuration file
+# files from tool repo
 import config
+from allocation import Allocation
 
 # Config file parsing
 from configparser import ConfigParser
@@ -73,7 +74,7 @@ LOG = configure_logging(debug = config.verbose, filename = "logfile.log")
 # Optional code for integration with CloudLab
 try:
     from cloudlab_allocator.orchestration import parse_config, \
-        allocate_nodes, deallocate_nodes, Allocation
+        allocate_nodes, deallocate_nodes
     LOG.debug("Imported code for CloudLab integration.")
 except:
     LOG.debug("Unable to import code for CloudLab integration. Proceeding without it.")
@@ -84,7 +85,7 @@ except:
 def parse_args():
     parser = argparse.ArgumentParser(description='Description of supported command-line arguments:')
     parser.add_argument('--cloudlab', action='store_true',
-                        help='Switch allowing running experiments on CloudLab machines')
+                        help='Switch to allowing running experiments on CloudLab machines')
     parser.add_argument('--cloudlab_config', type=str, default='cloudlab.config',
                         help='Path to config file with CloudLab-related settings')
     return parser.parse_args()
@@ -261,9 +262,6 @@ def initialize_remote_server(repo, worker):
     """ Sets up worker node to begin running experiments. Clones experiment
     repo, runs initialization script, and facilitates collectin of machine
     specs. Machine will then be rebooted to a clean state to begin experimentation
-
-    TODO: Run env_info.sh remotely and save results, check return value and exit
-    if unsuccessful
     """
     max_tries = 3
     n_tries = 0
@@ -416,6 +414,7 @@ def release_cloudlab(args, allocation):
 ##########################################################
 ### Workflow for single-node experimentation #############
 ##########################################################
+#TODO: Change to handle cloudlab or pre-allocated machine
 def run_single_node(worker):
 
     # Set up worker node
