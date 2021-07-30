@@ -1,5 +1,5 @@
 # SSH Configurations
-worker = "ms0745.utah.cloudlab.us"
+workers = ["ms0745.utah.cloudlab.us"]
 user = "carina"
 keyfile = "/home/carina/.ssh/id_cloud"
 port_num = 22
@@ -8,7 +8,7 @@ port_num = 22
 repo = "https://gitlab.flux.utah.edu/carina/test-experiments.git"
 
 # Filepaths
-configfile_path = "~/test-experiments/exp_config.py"
+configfile = "exp_config.py"
 results_dir = "~/test-experiments/results"
 results_file = "results.txt"
 

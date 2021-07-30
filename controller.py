@@ -93,7 +93,7 @@ def parse_args():
 ################################
 ### Establish SSH Connection ###
 ################################
-def open_ssh_connection(worker, timeout=10, max_tries=10):
+def open_ssh_connection(worker, allocation, port_num = 22, timeout=10, max_tries=10):
     """ Attemps to establish an SSH connection to the specified worker node.
     If successful, returns an SSHClient with open connection to the worker.
     """
@@ -106,9 +106,9 @@ def open_ssh_connection(worker, timeout=10, max_tries=10):
     # SSH Connect
     while True:
         try:
-            ssh.connect(hostname = worker, port = config.port_num,
-                        username = config.user, key_filename=config.keyfile,
-                        timeout = timeout)
+            ssh.connect(hostname = worker, port = port_num,
+                        username = allocation.user,
+                        key_filename = allocation.public_key, timeout = timeout)
         except Exception as e:
             n_tries += 1
             LOG.error("In open_ssh_connection: " + repr(e) + " - " + str(e))
@@ -258,7 +258,7 @@ def reboot(ssh_client, worker):
 ##############################
 ### Initialize worker node ###
 ##############################
-def initialize_remote_server(repo, worker):
+def initialize_remote_server(repo, worker, allocation):
     """ Sets up worker node to begin running experiments. Clones experiment
     repo, runs initialization script, and facilitates collectin of machine
     specs. Machine will then be rebooted to a clean state to begin experimentation
@@ -268,7 +268,7 @@ def initialize_remote_server(repo, worker):
 
     # Attemp to connect to server, and quit if failed
     try:
-        ssh = open_ssh_connection(worker)
+        ssh = open_ssh_connection(worker, allocation)
     except:
         LOG.critical("Failure to connect to " + worker,
                     exec_info=True)
@@ -284,7 +284,7 @@ def initialize_remote_server(repo, worker):
     LOG.info("Cloning repo: " + repo + "...")
     execute_remote_command(ssh, "git clone " + repo)
 
-    # Transfer experiment commands
+    # Transfer experiment command function
     LOG.info("Transferring experiment commands from " + worker + "...")
     cmd = ["scp",
            "-o", "StrictHostKeyChecking=no",
@@ -294,6 +294,7 @@ def initialize_remote_server(repo, worker):
 
     # Run initialization script. Results directory will be created here
     LOG.info("Running initialization script...")
+    #TODO, CHANGE THIS HERE
     execute_remote_command(ssh, "cd test-experiments && ./initialize.sh")
 
     # Gather machine specs
@@ -313,7 +314,7 @@ def initialize_remote_server(repo, worker):
 #################################################################
 ### Run remote experiments on worker node and record metadata ###
 #################################################################
-def run_remote_experiment(worker, order, exp_dict, n_runs):
+def run_remote_experiment(worker, allocation, order, exp_dict, n_runs):
     """ Runs experiments on worker node in either a fixed, arbitrary order or
     a random order. Runs will be executed 'n_runs' times, and results will be saved
     on the worker end. Upon completion, each run and its metadata will be stored.
@@ -329,7 +330,7 @@ def run_remote_experiment(worker, order, exp_dict, n_runs):
     # Begin exp loop n times
     for x in range(n_runs):
         id = uuid.uuid1()
-        ssh = open_ssh_connection(worker)
+        ssh = open_ssh_connection(worker, allocation)
 
         LOG.info("Running " + order + " loop " + str(x + 1) + " of " + str(n_runs))
         if order == "random":
@@ -365,7 +366,8 @@ def access_provider_wrapper(args):
         return access_cloudlab(args)
     else:
         LOG.info("Using pre-allocate machine for running experiments")
-        return Allocation([config.worker])
+        return Allocation(config.workers, user = config.user,
+                          public_key = config.keyfile, port = config.port_num)
 
 ##############################################
 ### Access Cloudlab and allocate resources ###
@@ -411,26 +413,23 @@ def release_cloudlab(args, allocation):
     deallocate_nodes(allocation, LOG)
     LOG.info("Done deallocating nodes on CloudLab.")
 
-##########################################################
-### Workflow for single-node experimentation #############
-##########################################################
-#TODO: Change to handle cloudlab or pre-allocated machine
-def run_single_node(worker):
+#########################################################
+###      Workflow for single-node experimentation      ###
+#########################################################
+def run_single_node(worker, allocation):
 
     # Set up worker node
-    initialize_remote_server(config.repo, worker)
+    initialize_remote_server(config.repo, worker, allocation)
 
     # Read in commands to run experiments
     config_file = os.path.basename(config.configfile_path)
-    with open(config_file) as f:
-        exps = f.readlines()
-    exps = [x.strip() for x in exps]
+
     # Assign number to each experiment and store in dictionary
     exp_dict = {i : exps[i] for i in range(0, len(exps))}
 
     # Run experiments, returns lists to add to dataframe
-    fixed_exp, fixed_run = run_remote_experiment(worker, "fixed", exp_dict, 1)
-    random_exp, random_run = run_remote_experiment(worker, "random", exp_dict, 1)
+    fixed_exp, fixed_run = run_remote_experiment(worker, allocation, "fixed", exp_dict, 1)
+    random_exp, random_run = run_remote_experiment(worker, allocation, "random", exp_dict, 1)
 
     # Create dataframe of individual experiments for csv
     exp_results_csv = pd.DataFrame(fixed_exp + random_exp,
@@ -472,8 +471,10 @@ def run_single_node(worker):
 ###################################################################
 ### Workflow for experimentation using multiple-nodes #############
 ###################################################################
-def run_multiple_nodes(worker_list):
-    LOG.info("Still needs to be implemented. Doing nothing now.")
+def run_multiple_nodes(allocation):
+    for host in allocation.hostnames:
+        # do something
+
 
 #####################
 ### Main function ###
@@ -485,7 +486,7 @@ def main():
 
     if len(allocation.hostnames) == 1:
         worker = allocation.hostnames[0]
-        run_single_node(worker)
+        run_single_node(worker, allocation)
     elif len(allocation.hostnames) > 1:
         run_multiple_nodes(allocation.hostnames)
     else:
