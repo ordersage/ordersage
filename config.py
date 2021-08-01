@@ -8,7 +8,7 @@ port_num = 22
 repo = "https://gitlab.flux.utah.edu/carina/test-experiments.git"
 
 # Filepaths
-configfile = "exp_config.py"
+configfile_path = "~/test-experiments/exp_config.sh"
 results_dir = "~/test-experiments/results"
 results_file = "results.txt"
 

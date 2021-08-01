@@ -3,6 +3,8 @@ import sys
 import os
 import subprocess
 import argparse
+import io
+from contextlib import redirect_stdout
 
 # Time libraries and RNG
 import time
@@ -125,7 +127,8 @@ def open_ssh_connection(worker, allocation, port_num = 22, timeout=10, max_tries
 ######################################
 ### Execute command on worker node ###
 ######################################
-def execute_remote_command(ssh_client, cmd, max_tries=1, timeout=10):
+def execute_remote_command(ssh_client, cmd, max_tries=1, timeout=10,
+                            print_to_console=False):
     """ Executes command on worker node via pre-established SSHClient.
     Captures stdout continuously as command runs and blocks until remote command
     finishes execution and exit status is received. If verbose option is on, stdout
@@ -148,6 +151,8 @@ def execute_remote_command(ssh_client, cmd, max_tries=1, timeout=10):
                     break
                 else:
                     out = output.decode('utf-8')
+                    if print_to_console:
+                        print(out)
                     # Split by newline
                     out = out.splitlines()
                     for o in filter(None, out):
@@ -294,7 +299,7 @@ def initialize_remote_server(repo, worker, allocation):
 
     # Run initialization script. Results directory will be created here
     LOG.info("Running initialization script...")
-    #TODO, CHANGE THIS HERE
+    #TODO, CHANGE THIS HEREZ
     execute_remote_command(ssh, "cd test-experiments && ./initialize.sh")
 
     # Gather machine specs
@@ -367,7 +372,7 @@ def access_provider_wrapper(args):
     else:
         LOG.info("Using pre-allocate machine for running experiments")
         return Allocation(config.workers, user = config.user,
-                          public_key = config.keyfile, port = config.port_num)
+                          public_key = config.keyfile)
 
 ##############################################
 ### Access Cloudlab and allocate resources ###
@@ -420,9 +425,17 @@ def run_single_node(worker, allocation):
 
     # Set up worker node
     initialize_remote_server(config.repo, worker, allocation)
+    ssh = open_ssh_connection(worker, allocation)
 
-    # Read in commands to run experiments
-    config_file = os.path.basename(config.configfile_path)
+    # There might be a better way to do this...
+    f = io.StringIO()
+    with redirect_stdout(f):
+        execute_remote_command(ssh, "bash " + config.configfile_path,
+                                print_to_console=True)
+    exps = f.getvalue()
+    exps = exps.splitlines()
+    exps = list(filter(None, exps))
+    print(exps)
 
     # Assign number to each experiment and store in dictionary
     exp_dict = {i : exps[i] for i in range(0, len(exps))}
@@ -472,9 +485,9 @@ def run_single_node(worker, allocation):
 ### Workflow for experimentation using multiple-nodes #############
 ###################################################################
 def run_multiple_nodes(allocation):
-    for host in allocation.hostnames:
+    #for host in allocation.hostnames:
         # do something
-
+        pass
 
 #####################
 ### Main function ###
