@@ -342,11 +342,11 @@ def run_remote_experiment(worker, allocation, order, exp_dict, n_runs):
             result = execute_remote_command(ssh, "cd test-experiments && " + cmd)
             stop = time.process_time()
             # Save experiment with completion status and metadata
-            exp_result = [id, x, n_runs, cmd, exp, i, order, start, stop, result]
+            exp_result = [id, worker, x, n_runs, cmd, exp, i, order, start, stop, result]
             exp_data.append(exp_result)
         # Collect run information
         run_stop = time.process_time()
-        run_results = [id, x, n_runs, order, rand_seed, run_start, run_stop]
+        run_results = [id, worker, x, n_runs, order, rand_seed, run_start, run_stop]
         run_data.append(run_results)
 
         reboot(ssh, worker)
@@ -412,7 +412,7 @@ def release_cloudlab(args, allocation):
 #########################################################
 ###      Workflow for single-node experimentation      ###
 #########################################################
-def run_single_node(worker, allocation):
+def run_single_node(worker, allocation, timestamp):
 
     # Set up worker node
     initialize_remote_server(config.repo, worker, allocation)
@@ -439,12 +439,12 @@ def run_single_node(worker, allocation):
 
     # Create dataframe of individual experiments for csv
     exp_results_csv = pd.DataFrame(fixed_exp + random_exp,
-                                columns=("run_uuid", "run_num", "total_runs",
+                                columns=("run_uuid", "hostname", "run_num", "total_runs",
                                         "exp_command", "exp_number", "order_number",
                                         "order_type", "time_start", "time_stop",
                                         "completion_status"))
     run_results_csv = pd.DataFrame(fixed_run + random_run,
-                                columns=("run_uuid", "run_num", "total_runs",
+                                columns=("run_uuid", "hostname", "run_num", "total_runs",
                                         "order_type", "random_seed", "time_start",
                                         "time_stop"))
 
@@ -455,7 +455,7 @@ def run_single_node(worker, allocation):
     execute_local_command(cmd)
 
     # Timestamp results folder
-    results_dir = datetime.now().strftime("%Y%m%d_%H:%M:%S") + "_results"
+    results_dir = timestamp + "_results"
     execute_local_command(["mv", "results", results_dir])
 
     # Gather results
@@ -466,15 +466,15 @@ def run_single_node(worker, allocation):
     # Add results to dataframe and save as csv
     LOG.info("Adding results to experiment metadata")
     exp_results_csv["result"] = results
-    exp_results_csv.to_csv(results_dir + "/experiment_results.csv", index=False)
-    run_results_csv.to_csv(results_dir + "/run_results.csv", index=False)
+    exp_results_csv.to_csv(results_dir + "/" + worker + "_experiment_results.csv", index=False)
+    run_results_csv.to_csv(results_dir + "/" + worker + "_run_results.csv", index=False)
 
     LOG.info("Experiemnts successfully run on single node (%s) and stored" % worker)
 
-###################################################################
+##################################################################
 ### Workflow for experimentation using multiple-nodes #############
-###################################################################
-def run_multiple_nodes(allocation):
+##################################################################
+def run_multiple_nodes(allocation, timestamp):
     #for host in allocation.hostnames:
         # do something
         pass
@@ -486,12 +486,13 @@ def main():
     args = parse_args()
     # Allocate resources according to provided arguments
     allocation = access_provider_wrapper(args)
+    timestamp = datetime.now().strftime("%Y%m%d_%H:%M:%S")
 
     if len(allocation.hostnames) == 1:
         worker = allocation.hostnames[0]
-        run_single_node(worker, allocation)
+        run_single_node(worker, allocation, timestamp)
     elif len(allocation.hostnames) > 1:
-        run_multiple_nodes(allocation.hostnames)
+        run_multiple_nodes(allocation.hostnames, timestamp)
     else:
         LOG.error("Something went wrong. No nodes allocated")
 
