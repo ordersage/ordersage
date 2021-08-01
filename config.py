@@ -7,8 +7,9 @@ port_num = 22
 # Experiemnts Repo
 repo = "https://gitlab.flux.utah.edu/carina/test-experiments.git"
 
-# Filepaths
-configfile_path = "~/test-experiments/exp_config.sh"
+# Filepaths and commands
+init_script_call = "cd test-experiments && ./initialize.sh"
+experiment_script_call = "bash ~/test-experiments/exp_config.sh"
 results_dir = "~/test-experiments/results"
 results_file = "results.txt"
 

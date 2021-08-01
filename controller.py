@@ -99,7 +99,7 @@ def open_ssh_connection(worker, allocation, port_num = 22, timeout=10, max_tries
     """ Attemps to establish an SSH connection to the specified worker node.
     If successful, returns an SSHClient with open connection to the worker.
     """
-    LOG.debug("Starting to open ssh connection")
+    LOG.info("Starting to open ssh connection")
     n_tries = 0
     ssh = paramiko.SSHClient()
     ssh.load_system_host_keys()
@@ -289,18 +289,9 @@ def initialize_remote_server(repo, worker, allocation):
     LOG.info("Cloning repo: " + repo + "...")
     execute_remote_command(ssh, "git clone " + repo)
 
-    # Transfer experiment command function
-    LOG.info("Transferring experiment commands from " + worker + "...")
-    cmd = ["scp",
-           "-o", "StrictHostKeyChecking=no",
-            config.user + "@" + worker + ":" + config.configfile_path,
-            "."]
-    execute_local_command(cmd, "initializa_remote_server")
-
     # Run initialization script. Results directory will be created here
     LOG.info("Running initialization script...")
-    #TODO, CHANGE THIS HEREZ
-    execute_remote_command(ssh, "cd test-experiments && ./initialize.sh")
+    execute_remote_command(ssh, config.init_script_call)
 
     # Gather machine specs
     LOG.info("Transferring env_info.sh to " + worker)
@@ -428,14 +419,16 @@ def run_single_node(worker, allocation):
     ssh = open_ssh_connection(worker, allocation)
 
     # There might be a better way to do this...
+    # Call function to print list of experiments and direct to stdout
+    LOG.info("Retrieving experiment commands" + worker + "...")
     f = io.StringIO()
     with redirect_stdout(f):
-        execute_remote_command(ssh, "bash " + config.configfile_path,
+        execute_remote_command(ssh, config.experiment_script_call,
                                 print_to_console=True)
     exps = f.getvalue()
     exps = exps.splitlines()
     exps = list(filter(None, exps))
-    print(exps)
+    ssh.close()
 
     # Assign number to each experiment and store in dictionary
     exp_dict = {i : exps[i] for i in range(0, len(exps))}
@@ -475,9 +468,6 @@ def run_single_node(worker, allocation):
     exp_results_csv["result"] = results
     exp_results_csv.to_csv(results_dir + "/experiment_results.csv", index=False)
     run_results_csv.to_csv(results_dir + "/run_results.csv", index=False)
-
-    # Add config file to results dir
-    execute_local_command(["mv", "exp_config.py", results_dir])
 
     LOG.info("Experiemnts successfully run on single node (%s) and stored" % worker)
 
