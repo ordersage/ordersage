@@ -8,6 +8,8 @@ This repo contains the code for running benchmarks in fixed/randomized orders on
 
 Users must fill out or update `config.py` prior to usage of the controller script. Configuration must include the SSH information for the worker node (unless Cloudlab resources will be used), the repository that will contain the experiments, the paths to the specified files and directories, and optional debugging and random seed information.
 
+Additionally, `config.py` must contain commands to run an initialization script (see `Initialization`) and a script that prints all experiments commands that will be used to stdout.
+
 #### 2. Get all dependencies (set up environment)
 
 Users must have a working Python environment with such packages as `paramiko`, `pandas`, and `numpy`, among others imported at the top of `controller.py` script. The easiest way to set up such environment is with the `conda` environment manager (instructions below show how `miniconda` can be installed, which is the minimal version of that).
@@ -40,7 +42,7 @@ and [https://gitlab.flux.utah.edu/Duplyakin/test-experiments](https://gitlab.flu
 
 ##### Initialization
 
-Experiment repositories should contain a script `initialization.sh` that sets up the worker node(s) to ready them for experimentation. Our controller script will run the script before experimentation and reboot to achieve a clean state.
+Experiment repositories should contain a script `initialization.sh` that sets up the worker node(s) to ready them for experimentation. Our controller script will run the script before experimentation and reboot to achieve a clean state. Initialization must include the creation of a results directory whose location is recorded in `config.py`.
 
 ##### Experiment Configuration File
 
@@ -50,7 +52,7 @@ The controller script requires the set of experiments to be run in the form of t
 bash exp_1.sh -r 20
 ```
 
-All experiment commands must be included in a single-column file, and the file path must be entered as `configfile_path` in the controllers configuration file. It is from this file that the controller will distinguish an arbitrary fixed order from randomized orders.
+All experiment commands must be printed on new lines to stdout by running a script on a remote machine. The controller node will execute the remote script by running the command specified in `config.py` over an established ssh connection. It is from this script that the controller will distinguish an arbitrary fixed order from randomized orders.
 
 #### 4. Optional: Get code for allocating CloudLab nodes
 
