@@ -30,6 +30,9 @@ import numpy as np
 # uuid library
 import uuid
 
+# multithreading
+import threading
+
 # files from tool repo
 import config
 from allocation import Allocation
@@ -87,7 +90,7 @@ except:
 def parse_args():
     parser = argparse.ArgumentParser(description='Description of supported command-line arguments:')
     parser.add_argument('--cloudlab', action='store_true',
-                        help='Switch to allowing running experiments on CloudLab machines')
+                        help='Switch to allowing running experiments on CloudLab es')
     parser.add_argument('--cloudlab_config', type=str, default='cloudlab.config',
                         help='Path to config file with CloudLab-related settings')
     return parser.parse_args()
@@ -229,7 +232,7 @@ def reboot(ssh_client, worker):
     LOG.info("Rebooting...")
     execute_remote_command(ssh_client, "sudo reboot")
 
-    # Spin until the machine comes up and is ready for SSH
+    # Spin until the e comes up and is ready for SSH
     LOG.info("Awaiting completion of reboot for "
                 + worker
                 + ", sleeping for 2 minutes...")
@@ -265,8 +268,8 @@ def reboot(ssh_client, worker):
 ##############################
 def initialize_remote_server(repo, worker, allocation):
     """ Sets up worker node to begin running experiments. Clones experiment
-    repo, runs initialization script, and facilitates collectin of machine
-    specs. Machine will then be rebooted to a clean state to begin experimentation
+    repo, runs initialization script, and facilitates collectin of e
+    specs. e will then be rebooted to a clean state to begin experimentation
     """
     max_tries = 3
     n_tries = 0
@@ -293,7 +296,7 @@ def initialize_remote_server(repo, worker, allocation):
     LOG.info("Running initialization script...")
     execute_remote_command(ssh, config.init_script_call)
 
-    # Gather machine specs
+    # Gather e specs
     LOG.info("Transferring env_info.sh to " + worker)
     cmd = ["scp",
             "-o", "StrictHostKeyChecking=no",
@@ -301,6 +304,9 @@ def initialize_remote_server(repo, worker, allocation):
             config.user + "@" + worker + ":" + config.results_dir]
     execute_local_command(cmd, "initialize_remote_server")
     execute_remote_command(ssh, "cd " + config.results_dir + " && ./env_info.sh")
+    # Rename to add hostname
+    execute_remote_command(ssh, "cd " + config.results_dir + " && mv env_out.csv "
+                                + worker + "_env_out.csv")
 
     # Reboot to clean state
     reboot(ssh, worker)
@@ -361,7 +367,7 @@ def access_provider_wrapper(args):
         LOG.info("Using CloudLab as a platform for running experiments")
         return access_cloudlab(args)
     else:
-        LOG.info("Using pre-allocate machine for running experiments")
+        LOG.info("Using pre-allocate e for running experiments")
         return Allocation(config.workers, user = config.user,
                           public_key = config.keyfile)
 
@@ -412,12 +418,12 @@ def release_cloudlab(args, allocation):
 #########################################################
 ###      Workflow for single-node experimentation      ###
 #########################################################
-def run_single_node(worker, allocation, timestamp):
+def run_single_node(worker, allocation, results_dir):
 
     # Set up worker node
     initialize_remote_server(config.repo, worker, allocation)
-    ssh = open_ssh_connection(worker, allocation)
 
+    ssh = open_ssh_connection(worker, allocation)
     # There might be a better way to do this...
     # Call function to print list of experiments and direct to stdout
     LOG.info("Retrieving experiment commands" + worker + "...")
@@ -428,7 +434,7 @@ def run_single_node(worker, allocation, timestamp):
     exps = f.getvalue()
     exps = exps.splitlines()
     exps = list(filter(None, exps))
-    ssh.close()
+
 
     # Assign number to each experiment and store in dictionary
     exp_dict = {i : exps[i] for i in range(0, len(exps))}
@@ -448,22 +454,27 @@ def run_single_node(worker, allocation, timestamp):
                                         "order_type", "random_seed", "time_start",
                                         "time_stop"))
 
-    # scp results directory from worker and rename with timestamp
+    # Add machine type to results file
+    results_with_hostname = worker + "_" + config.results_file
+    execute_remote_command(ssh, "cd " + config.results_dir + " && "
+                            + "mv " + config.results_file + " "
+                            + results_with_hostname)
+    ssh.close()
+
+    # scp everything in results directory from worker and rename with timestamp
     LOG.info("Transferring results from " + worker + " to local")
     # "-o StrictHostKeyChecking=no" is supposed to help avoid answering "yes" for new machines
-    cmd = ["scp", "-o", "StrictHostKeyChecking=no", "-r", config.user + "@" + worker + ":" + config.results_dir, "."]
+    cmd = ["scp", "-o", "StrictHostKeyChecking=no", "-r",
+            config.user + "@" + worker + ":" + config.results_dir + "/*",
+            "./" + results_dir]
     execute_local_command(cmd)
 
-    # Timestamp results folder
-    results_dir = timestamp + "_results"
-    execute_local_command(["mv", "results", results_dir])
-
     # Gather results
-    with open(results_dir + "/" + config.results_file) as f:
+    with open(results_dir + "/" + results_with_hostname) as f:
         results = f.readlines()
     results = [x.strip() for x in results]
 
-    # Add results to dataframe and save as csv
+    # Add results to dataframe and save as csv specific to host
     LOG.info("Adding results to experiment metadata")
     exp_results_csv["result"] = results
     exp_results_csv.to_csv(results_dir + "/" + worker + "_experiment_results.csv", index=False)
@@ -474,25 +485,35 @@ def run_single_node(worker, allocation, timestamp):
 ##################################################################
 ### Workflow for experimentation using multiple-nodes #############
 ##################################################################
-def run_multiple_nodes(allocation, timestamp):
-    #for host in allocation.hostnames:
-        # do something
-        pass
+def run_multiple_nodes(allocation, results_dir):
+    threads = [None] * len(allocation.hostnames)
+    for n, host in enumerate(allocation.hostnames):
+        threads[n] = threading.Thread(target=run_single_node,
+                                        args=(host, allocation, results_dir,))
+        threads[n].start()
+
+    for t in threads:
+        t.join()
 
 #####################
 ### Main function ###
 #####################
 def main():
     args = parse_args()
+
     # Allocate resources according to provided arguments
     allocation = access_provider_wrapper(args)
     timestamp = datetime.now().strftime("%Y%m%d_%H:%M:%S")
 
+    # Set up results directory with timestamp
+    results_dir = timestamp + "_results"
+    execute_local_command(["mkdir", results_dir])
+
     if len(allocation.hostnames) == 1:
         worker = allocation.hostnames[0]
-        run_single_node(worker, allocation, timestamp)
+        run_single_node(worker, allocation, results_dir)
     elif len(allocation.hostnames) > 1:
-        run_multiple_nodes(allocation.hostnames, timestamp)
+        run_multiple_nodes(allocation, results_dir)
     else:
         LOG.error("Something went wrong. No nodes allocated")
 
