@@ -367,7 +367,7 @@ def access_provider_wrapper(args):
         LOG.info("Using CloudLab as a platform for running experiments")
         return access_cloudlab(args)
     else:
-        LOG.info("Using pre-allocate e for running experiments")
+        LOG.info("Using pre-allocate node for running experiments")
         return Allocation(config.workers, user = config.user,
                           public_key = config.keyfile)
 
@@ -415,18 +415,30 @@ def release_cloudlab(args, allocation):
     deallocate_nodes(allocation, LOG)
     LOG.info("Done deallocating nodes on CloudLab.")
 
-#########################################################
-###      Workflow for single-node experimentation      ###
-#########################################################
-def run_single_node(worker, allocation, results_dir):
+#####################################################
+### sets up node and returns list of experiments ####
+#####################################################
+def coordinate_node_initialization(allocation):
+    if(len(allocation.hostnames) == 1):
+        initialize_remote_server(config.repo, allocation.hostnames[0], allocation)
+    elif len(allocation.hostnames) > 1:
+        # Initialize worker nodes
+        threads = [None] * len(allocation.hostnames)
+        for n, host in enumerate(allocation.hostnames):
+            threads[n] = threading.Thread(target=initialize_remote_server,
+                                            args=(config.repo, host, allocation,))
+            threads[n].start()
 
-    # Set up worker node
-    initialize_remote_server(config.repo, worker, allocation)
+        for t in threads:
+            t.join()
+    else:
+        LOG.error("Something went wrong. No nodes allocated")
+        raise ValueError()
 
-    ssh = open_ssh_connection(worker, allocation)
-    # There might be a better way to do this...
+    # Pick first allocation to retrieve experiment command list
+    ssh = open_ssh_connection(allocation.hostnames[0], allocation)
     # Call function to print list of experiments and direct to stdout
-    LOG.info("Retrieving experiment commands" + worker + "...")
+    LOG.info("Retrieving experiment commands from " + allocation.hostnames[0] + "...")
     f = io.StringIO()
     with redirect_stdout(f):
         execute_remote_command(ssh, config.experiment_script_call,
@@ -434,8 +446,14 @@ def run_single_node(worker, allocation, results_dir):
     exps = f.getvalue()
     exps = exps.splitlines()
     exps = list(filter(None, exps))
+    ssh.close()
+    return exps
 
-
+#########################################################
+###      Workflow for single-node experimentation      ###
+#########################################################
+def run_single_node(worker, allocation, results_dir, exps):
+    LOG.info("Beginning experimentation for " + worker)
     # Assign number to each experiment and store in dictionary
     exp_dict = {i : exps[i] for i in range(0, len(exps))}
 
@@ -455,6 +473,7 @@ def run_single_node(worker, allocation, results_dir):
                                         "time_stop"))
 
     # Add machine type to results file
+    ssh = open_ssh_connection(worker, allocation)
     results_with_hostname = worker + "_" + config.results_file
     execute_remote_command(ssh, "cd " + config.results_dir + " && "
                             + "mv " + config.results_file + " "
@@ -480,16 +499,17 @@ def run_single_node(worker, allocation, results_dir):
     exp_results_csv.to_csv(results_dir + "/" + worker + "_experiment_results.csv", index=False)
     run_results_csv.to_csv(results_dir + "/" + worker + "_run_results.csv", index=False)
 
-    LOG.info("Experiemnts successfully run on single node (%s) and stored" % worker)
+    LOG.info("Experiemnts successfully run on node (%s) and stored" % worker)
 
 ##################################################################
 ### Workflow for experimentation using multiple-nodes #############
 ##################################################################
-def run_multiple_nodes(allocation, results_dir):
+def run_multiple_nodes(allocation, results_dir, exps):
     threads = [None] * len(allocation.hostnames)
     for n, host in enumerate(allocation.hostnames):
         threads[n] = threading.Thread(target=run_single_node,
-                                        args=(host, allocation, results_dir,))
+                                        args=(host, allocation,
+                                                results_dir, exps,))
         threads[n].start()
 
     for t in threads:
@@ -508,12 +528,14 @@ def main():
     # Set up results directory with timestamp
     results_dir = timestamp + "_results"
     execute_local_command(["mkdir", results_dir])
+    # Initialize node(s) and retrieve experiments
+    exp_commands = coordinate_node_initialization(allocation)
 
     if len(allocation.hostnames) == 1:
         worker = allocation.hostnames[0]
-        run_single_node(worker, allocation, results_dir)
+        run_single_node(worker, allocation, results_dir, exp_commands)
     elif len(allocation.hostnames) > 1:
-        run_multiple_nodes(allocation, results_dir)
+        run_multiple_nodes(allocation, results_dir, exp_commands)
     else:
         LOG.error("Something went wrong. No nodes allocated")
 

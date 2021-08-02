@@ -1,5 +1,5 @@
 # SSH Configurations
-workers = ["ms0745.utah.cloudlab.us"]
+workers = ["ms0745.utah.cloudlab.us","ms0625.utah.cloudlab.us"]
 user = "carina"
 keyfile = "/home/carina/.ssh/id_cloud"
 port_num = 22
