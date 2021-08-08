@@ -5,6 +5,7 @@ import subprocess
 import argparse
 import io
 from contextlib import redirect_stdout
+from pathlib import Path
 
 # Time libraries and RNG
 import time
@@ -285,7 +286,7 @@ def initialize_remote_server(repo, worker, allocation):
 #################################################################
 ### Run remote experiments on worker node and record metadata ###
 #################################################################
-def run_remote_experiment(worker, allocation, order, exp_dict, n_runs):
+def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory):
     """ Runs experiments on worker node in either a fixed, arbitrary order or
     a random order. Runs will be executed 'n_runs' times, and results will be saved
     on the worker end. Upon completion, each run and its metadata will be stored.
@@ -314,7 +315,7 @@ def run_remote_experiment(worker, allocation, order, exp_dict, n_runs):
             cmd = exp_dict.get(exp)
             LOG.info("Running " + cmd + "...")
             start = time.process_time()
-            result = execute_remote_command(ssh, "cd test-experiments && " + cmd)
+            result = execute_remote_command(ssh, "cd %s && %s" % (directory, cmd))
             stop = time.process_time()
             # Save experiment with completion status and metadata
             exp_result = [id, worker, x, n_runs, cmd, exp, i, order, start, stop, result]
@@ -426,9 +427,14 @@ def run_single_node(worker, allocation, results_dir, exps):
     # Assign number to each experiment and store in dictionary
     exp_dict = {i : exps[i] for i in range(0, len(exps))}
 
+    # Extract name of dir where repo code whill be cloned (i.e. lowest-level dir in path)
+    repo_dir = Path(config.repo).name
+
     # Run experiments, returns lists to add to dataframe
-    fixed_exp, fixed_run = run_remote_experiment(worker, allocation, "fixed", exp_dict, 1)
-    random_exp, random_run = run_remote_experiment(worker, allocation, "random", exp_dict, 1)
+    fixed_exp, fixed_run = run_remote_experiment(worker, allocation, "fixed", exp_dict, 1,
+                                                 directory=repo_dir)
+    random_exp, random_run = run_remote_experiment(worker, allocation, "random", exp_dict, 1,
+                                                   directory=repo_dir)
 
     # Create dataframe of individual experiments for csv
     exp_results_csv = pd.DataFrame(fixed_exp + random_exp,
