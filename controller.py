@@ -44,7 +44,7 @@ from configparser import ConfigParser
 
 # See debug info from paramiko
 logging.getLogger("paramiko").setLevel(logging.DEBUG)
-LOG = configure_logging(debug = config.verbose, filename = "logfile.log")
+LOG = configure_logging(__name__,debug = config.verbose, filename = "logfile.log")
 
 # Optional code for integration with CloudLab
 try:
@@ -286,7 +286,7 @@ def initialize_remote_server(repo, worker, allocation):
 #################################################################
 ### Run remote experiments on worker node and record metadata ###
 #################################################################
-def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory):
+def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory,log=None):
     """ Runs experiments on worker node in either a fixed, arbitrary order or
     a random order. Runs will be executed 'n_runs' times, and results will be saved
     on the worker end. Upon completion, each run and its metadata will be stored.
@@ -294,7 +294,8 @@ def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory
     exp_data = []
     run_data = []
     exps = list(exp_dict.keys())
-
+    if log is None:
+        log = LOG
     # Set seed
     rand_seed = config.seed if config.seed else time.time()
     random.seed(rand_seed)
@@ -304,7 +305,7 @@ def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory
         id = uuid.uuid1()
         ssh = open_ssh_connection(worker, allocation)
 
-        LOG.info("Running " + order + " loop " + str(x + 1) + " of " + str(n_runs))
+        log.info("Running " + order + " loop " + str(x + 1) + " of " + str(n_runs))
         if order == "random":
             random.shuffle(exps)
 
@@ -313,7 +314,7 @@ def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory
         for i, exp in enumerate(exps):
             # Get experiment command from dictionary
             cmd = exp_dict.get(exp)
-            LOG.info("Running " + cmd + "...")
+            log.info("Running " + cmd + "...")
             start = time.process_time()
             result = execute_remote_command(ssh, "cd %s && %s" % (directory, cmd))
             stop = time.process_time()
@@ -422,19 +423,21 @@ def coordinate_node_initialization(allocation):
 #########################################################
 ###      Workflow for single-node experimentation      ###
 #########################################################
-def run_single_node(worker, allocation, results_dir, exps):
-    LOG.info("Beginning experimentation for " + worker)
+def run_single_node(worker, allocation, results_dir, exps, log=None):
+    if log is None:
+        log = LOG
+    log.info("Beginning experimentation for " + worker)
     # Assign number to each experiment and store in dictionary
     exp_dict = {i : exps[i] for i in range(0, len(exps))}
 
     # Extract name of dir where repo code whill be cloned (i.e. lowest-level dir in path)
     repo_dir = Path(config.repo).name
-
+    repo_dir = repo_dir[:-len(".git")] if repo_dir.endswith(".git") else repo_dir
     # Run experiments, returns lists to add to dataframe
     fixed_exp, fixed_run = run_remote_experiment(worker, allocation, "fixed", exp_dict, 1,
-                                                 directory=repo_dir)
+                                                 directory=repo_dir, log=log)
     random_exp, random_run = run_remote_experiment(worker, allocation, "random", exp_dict, 1,
-                                                   directory=repo_dir)
+                                                   directory=repo_dir, log=log)
 
     # Create dataframe of individual experiments for csv
     exp_results_csv = pd.DataFrame(fixed_exp + random_exp,
@@ -456,7 +459,7 @@ def run_single_node(worker, allocation, results_dir, exps):
     ssh.close()
 
     # scp everything in results directory from worker and rename with timestamp
-    LOG.info("Transferring results from " + worker + " to local")
+    log.info("Transferring results from " + worker + " to local")
     # "-o StrictHostKeyChecking=no" is supposed to help avoid answering "yes" for new machines
     cmd = ["scp", "-o", "StrictHostKeyChecking=no", "-r",
             config.user + "@" + worker + ":" + config.results_dir + "/*",
@@ -469,12 +472,12 @@ def run_single_node(worker, allocation, results_dir, exps):
     results = [x.strip() for x in results]
 
     # Add results to dataframe and save as csv specific to host
-    LOG.info("Adding results to experiment metadata")
+    log.info("Adding results to experiment metadata")
     exp_results_csv["result"] = results
     exp_results_csv.to_csv(results_dir + "/" + worker + "_experiment_results.csv", index=False)
     run_results_csv.to_csv(results_dir + "/" + worker + "_run_results.csv", index=False)
 
-    LOG.info("Experiemnts successfully run on node (%s) and stored" % worker)
+    log.info("Experiemnts successfully run on node (%s) and stored" % worker)
 
 ##################################################################
 ### Workflow for experimentation using multiple-nodes #############
@@ -482,9 +485,10 @@ def run_single_node(worker, allocation, results_dir, exps):
 def run_multiple_nodes(allocation, results_dir, exps):
     threads = [None] * len(allocation.hostnames)
     for n, host in enumerate(allocation.hostnames):
+        t_log = configure_logging("Thread: " + str(n), debug=False, filename=host+".log")
         threads[n] = threading.Thread(target=run_single_node,
                                         args=(host, allocation,
-                                                results_dir, exps,))
+                                                results_dir, exps,t_log,))
         threads[n].start()
 
     for t in threads:

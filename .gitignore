@@ -1,5 +1,5 @@
 .git/
 *_results/
 __pycache__/
-logfile.log
+*.log
 cloudlab_allocator

@@ -3,7 +3,7 @@ import logging
 ########################
 ### Configure Log file ###
 ########################
-def configure_logging(debug=False, filename='mylog.log'):
+def configure_logging(name, debug=False, filename='mylog.log'):
     """ This function configures logging facility.
     The current setup is for printing log messages onto console AND onto the file.
     Formatters are the same for both output destinations.
@@ -15,8 +15,12 @@ def configure_logging(debug=False, filename='mylog.log'):
     frmt_out = '%(message)s'
 
     # set up logging to file
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
+    if logger.handlers:
+        logger.handlers = []
+    logger.propagating = False
+
     file_handler = logging.FileHandler(filename)
     f_formatter = logging.Formatter(frmt_str)
     file_handler.setFormatter(f_formatter)
