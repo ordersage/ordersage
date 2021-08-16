@@ -131,10 +131,11 @@ def execute_remote_command(ssh_client, cmd, max_tries=1, timeout=10,
                     out = output.decode('utf-8')
                     if print_to_console:
                         print(out)
-                    # Split by newline
-                    out = out.splitlines()
-                    for o in filter(None, out):
-                        log.debug(o)
+                    else:
+                        # Split by newline
+                        out = out.splitlines()
+                        for o in filter(None, out):
+                            log.debug(o)
         except Exception as e:
             n_tries += 1
             log.error("SSH exception while executing '" + cmd + "'. Attempt "
