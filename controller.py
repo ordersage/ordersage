@@ -6,6 +6,7 @@ import argparse
 import io
 from contextlib import redirect_stdout
 from pathlib import Path
+import glob
 
 # Time libraries and RNG
 import time
@@ -533,7 +534,10 @@ def main():
         run_multiple_nodes(allocation, results_dir, exp_commands)
     else:
         LOG.error("Something went wrong. No nodes allocated")
-
+    # Save all results to single file
+    df = pd.concat(map(pd.read_csv, glob.glob(os.path.join(results_dir,
+                                                                '*_experiment_results.csv'))))
+    df.to_csv(results_dir + "/" + timestamp + "_all_exp_results.csv", index=False)
     # Releasing allocated resources
     release_resources_wrapper(args, allocation)
 
