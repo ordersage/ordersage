@@ -449,9 +449,9 @@ def run_single_node(worker, allocation, results_dir, exps, log=None):
     repo_dir = Path(config.repo).name
     repo_dir = repo_dir[:-len(".git")] if repo_dir.endswith(".git") else repo_dir
     # Run experiments, returns lists to add to dataframe
-    fixed_exp, fixed_run = run_remote_experiment(worker, allocation, "fixed", exp_dict, 1,
+    fixed_exp, fixed_run = run_remote_experiment(worker, allocation, "fixed", exp_dict, 10,
                                                  directory=repo_dir, log=log)
-    random_exp, random_run = run_remote_experiment(worker, allocation, "random", exp_dict, 1,
+    random_exp, random_run = run_remote_experiment(worker, allocation, "random", exp_dict, 10,
                                                    directory=repo_dir, log=log)
 
     # Create dataframe of individual experiments for csv
