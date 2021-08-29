@@ -38,7 +38,7 @@ def SW_test(df,measure,columns):
 
   for key, grp in df.groupby(columns):
       #if(len(grp)>=50):
-      shapiro_wilk.loc[len(shapiro_wilk)] = [stats.shapiro(grp[measure])[1], len(grp), key]
+      shapiro_wilk.loc[len(shapiro_wilk)] = [stats.shapiro(grp[measure])[1], len(grp)] + list(key)
 
   print(shapiro_wilk)
   Not_normal = shapiro_wilk[shapiro_wilk["S-W Test"]<0.05]
@@ -50,14 +50,14 @@ def SW_test(df,measure,columns):
   return shapiro_wilk, shapiro_stats
 
 #seq data
-shapiro_wilk_seq, shapiro_stats = SW_test(df_exp_seq,"result", ["exp_command"])
+shapiro_wilk_seq, shapiro_stats = SW_test(df_exp_seq,"result", ["exp_command", "hostname"])
 
 print("Number of configurations not normally distributed", shapiro_stats[0])
 print("Number of configurations normally distributed", shapiro_stats[1])
 print("Fraction of configurations not normally distributed", shapiro_stats[2])
 
 #rand data
-shapiro_wilk_rand, shapiro_stats = SW_test(df_exp_rand,"result", ["exp_command"])
+shapiro_wilk_rand, shapiro_stats = SW_test(df_exp_rand,"result", ["exp_command", "hostname"])
 print("Number of configurations not normally distributed", shapiro_stats[0])
 print("Number of configurations normally distributed", shapiro_stats[1])
 print("Fraction of configurations not normally distributed", shapiro_stats[2])
