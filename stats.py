@@ -81,11 +81,9 @@ def effect_size_eta_squared_KW(v_experiment, v_control):
   n = len(v_experiment) + len(v_control)
   return ((H-k + 1)/(n-k))
 
-def calc_main(df,measure):
+def calc_main(df,measure, configuration_key):
   # Samples with fewer than this number of values will not be considered
   sample_count_thresh = 50
-
-  configuration_key = ["exp_command"]
   df_effect = pd.DataFrame(columns = configuration_key + ["P_Diff","effect_size_KW", "Kruskal_p"])
 
   for idx, grp in df.groupby(configuration_key):
@@ -101,7 +99,7 @@ def calc_main(df,measure):
 
 """##Does order affect Benchmarks"""
 df_all = df_exp_seq.append(df_exp_rand)
-df_effect = calc_main(df_all,"result")
+df_effect = calc_main(df_all,"result", ["exp_command", "hostname"])
 
 #calculating average percentage difference
 df_effect["abs_P_Diff"] = df_effect["P_Diff"].apply(abs)
