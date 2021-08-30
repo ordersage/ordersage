@@ -15,20 +15,6 @@ import scipy.stats as stats
 #       configure CI testing (waiting on code from Nikhil)
 #       produce a report of statistical results
 
-def epoch2human(epoch):
-  return dt.datetime.fromtimestamp(epoch).strftime('%Y-%m-%d %H:%M:%S')
-
-time = sys.argv[1]
-"""##Fetching Data"""
-df_exp = pd.read_csv(glob.glob(time + "_results/*_all_exp_results.csv")[0])
-df_runs = pd.read_csv(glob.glob(time + "_results/*_all_run_results.csv")[0])
-df_env = pd.read_csv(glob.glob(time + "_results/*_all_env_out.csv")[0])
-
-"""##Preprocessing"""
-# Split by rand vs seq
-df_exp_rand = df_exp[df_exp['order_type'] == 'random']
-df_exp_seq = df_exp[df_exp['order_type'] == 'fixed']
-
 """##SHAPIRO WILK TEST"""
 
 def SW_test(df,measure,columns):
@@ -48,19 +34,6 @@ def SW_test(df,measure,columns):
   shapiro_stats = [Num_config_not_normal,Num_config_normal,fraction_not_normal]
 
   return shapiro_wilk, shapiro_stats
-
-#seq data
-shapiro_wilk_seq, shapiro_stats = SW_test(df_exp_seq,"result", ["exp_command", "hostname"])
-
-print("Number of configurations not normally distributed", shapiro_stats[0])
-print("Number of configurations normally distributed", shapiro_stats[1])
-print("Fraction of configurations not normally distributed", shapiro_stats[2])
-
-#rand data
-shapiro_wilk_rand, shapiro_stats = SW_test(df_exp_rand,"result", ["exp_command", "hostname"])
-print("Number of configurations not normally distributed", shapiro_stats[0])
-print("Number of configurations normally distributed", shapiro_stats[1])
-print("Fraction of configurations not normally distributed", shapiro_stats[2])
 
 """#Does Order Matter
 
@@ -97,6 +70,36 @@ def calc_main(df,measure, configuration_key):
 
   return(df_effect)
 
+def func(row):
+  if(row["P_Diff"]>0):
+    return "positive"
+  else:
+    return "negative"
+
+time = sys.argv[1]
+"""##Fetching Data"""
+df_exp = pd.read_csv(glob.glob(time + "_results/*_all_exp_results.csv")[0])
+df_runs = pd.read_csv(glob.glob(time + "_results/*_all_run_results.csv")[0])
+df_env = pd.read_csv(glob.glob(time + "_results/*_all_env_out.csv")[0])
+
+"""##Preprocessing"""
+# Split by rand vs seq
+df_exp_rand = df_exp[df_exp['order_type'] == 'random']
+df_exp_seq = df_exp[df_exp['order_type'] == 'fixed']
+
+#seq data
+shapiro_wilk_seq, shapiro_stats = SW_test(df_exp_seq,"result", ["exp_command", "hostname"])
+
+print("Number of configurations not normally distributed", shapiro_stats[0])
+print("Number of configurations normally distributed", shapiro_stats[1])
+print("Fraction of configurations not normally distributed", shapiro_stats[2])
+
+#rand data
+shapiro_wilk_rand, shapiro_stats = SW_test(df_exp_rand,"result", ["exp_command", "hostname"])
+print("Number of configurations not normally distributed", shapiro_stats[0])
+print("Number of configurations normally distributed", shapiro_stats[1])
+print("Fraction of configurations not normally distributed", shapiro_stats[2])
+
 """##Does order affect Benchmarks"""
 df_all = df_exp_seq.append(df_exp_rand)
 df_effect = calc_main(df_all,"result", ["exp_command", "hostname"])
@@ -105,13 +108,7 @@ df_effect = calc_main(df_all,"result", ["exp_command", "hostname"])
 df_effect["abs_P_Diff"] = df_effect["P_Diff"].apply(abs)
 print(sum(df_effect["abs_P_Diff"].values)/ len(df_effect))
 
-def func(row):
-  if(row["P_Diff"]>0):
-    return "positive"
-  else:
-    return "negative"
-
-#Looking at whether the random or the sequential order performed better
+# Looking at whether the random or the sequential order performed better
 
 df_effect["Pos_or_Neg"] = df_effect.apply(lambda row: func(row), axis=1)
 print(df_effect)
