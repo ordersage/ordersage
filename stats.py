@@ -82,20 +82,23 @@ def main():
 
     """##Preprocessing"""
     # Split by rand vs seq
-    df_exp_rand = df_exp[df_exp['random'] == 0]
-    df_exp_seq = df_exp[df_exp['random'] == 1]
+    df_exp_rand = df_exp[df_exp['random'] == 1]
+    df_exp_seq = df_exp[df_exp['random'] == 0]
 
     #seq data
     shapiro_wilk_seq, shapiro_stats = SW_test(df_exp_seq,"result", ["exp_command", "hostname"])
-
+    normally_distributed_seq = shapiro_wilk_seq[shapiro_wilk_seq["S-W Test"]>0.05]
     print("Sequential Data")
+    print(normally_distributed_seq)
     print("Number of configurations not normally distributed", shapiro_stats[0])
     print("Number of configurations normally distributed", shapiro_stats[1])
     print("Fraction of configurations not normally distributed", shapiro_stats[2])
 
     #rand data
     shapiro_wilk_rand, shapiro_stats = SW_test(df_exp_rand,"result", ["exp_command", "hostname"])
+    normally_distributed_rand = shapiro_wilk_rand[shapiro_wilk_rand["S-W Test"]>0.05]
     print("Random Data")
+    print(normally_distributed_rand)
     print("Number of configurations not normally distributed", shapiro_stats[0])
     print("Number of configurations normally distributed", shapiro_stats[1])
     print("Fraction of configurations not normally distributed", shapiro_stats[2])
@@ -111,7 +114,7 @@ def main():
     # Looking at whether the random or the sequential order performed better
 
     df_effect["Pos_or_Neg"] = df_effect.apply(lambda row: func(row), axis=1)
-    tmp = df_effect[df_effect["Kruskal_p"]< .5]
+    tmp = df_effect[df_effect["Kruskal_p"]<0.5]
     neg =  tmp[tmp["Pos_or_Neg"]== "negative"]
     pos = tmp[tmp["Pos_or_Neg"]== "positive"]
     pos_neg = pd.DataFrame(columns=["Num_seq_better_rand","Median","90th","Num_rand_better_seq","neg_Median","neg_90th"])
