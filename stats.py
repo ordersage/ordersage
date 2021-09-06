@@ -78,7 +78,7 @@ def main():
     # df_exp = pd.read_csv(glob.glob(time + "_results/*_all_exp_results.csv")[0])
     # df_runs = pd.read_csv(glob.glob(time + "_results/*_all_run_results.csv")[0])
     # df_env = pd.read_csv(glob.glob(time + "_results/*_all_env_out.csv")[0])
-    df_exp = pd.read_csv("../cpu_phase_test.csv")
+    df_exp = pd.read_csv("examples/test_data.csv")
 
     """##Preprocessing"""
     # Split by rand vs seq
@@ -114,9 +114,10 @@ def main():
     # Looking at whether the random or the sequential order performed better
 
     df_effect["Pos_or_Neg"] = df_effect.apply(lambda row: func(row), axis=1)
-    tmp = df_effect[df_effect["Kruskal_p"]<0.5]
+    tmp = df_effect[df_effect["Kruskal_p"]<0.05]
     neg =  tmp[tmp["Pos_or_Neg"]== "negative"]
     pos = tmp[tmp["Pos_or_Neg"]== "positive"]
+    # Change better to other name
     pos_neg = pd.DataFrame(columns=["Num_seq_better_rand","Median","90th","Num_rand_better_seq","neg_Median","neg_90th"])
     pos_neg.loc[len(pos_neg)] = [len(neg),stat.median(neg["abs_P_Diff"].values), neg["abs_P_Diff"].quantile(0.9),len(pos),stat.median(pos["abs_P_Diff"].values),pos["abs_P_Diff"].quantile(0.9)]
     print(pos_neg)
