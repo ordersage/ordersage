@@ -26,9 +26,10 @@ from logger import configure_logging
 # Subprocess functions
 from subprocess import Popen, PIPE, STDOUT, run
 
-# dataframe libraries
+# dataframe libraries and stats
 import pandas as pd
 import numpy as np
+import toolstats
 
 # uuid library
 import uuid

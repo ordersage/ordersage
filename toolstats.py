@@ -12,6 +12,11 @@ import scipy.stats as stats
 #       configure CI testing (waiting on code from Nikhil)
 #       produce a report of statistical results
 
+def process_data(df):
+    df_exp_rand = df[df['random'] == 1]
+    df_exp_seq = df[df['random'] == 0]
+    return df_exp_rand, df_exp_seq
+
 """##SHAPIRO WILK TEST"""
 
 def SW_test(df,measure,columns):
@@ -73,18 +78,7 @@ def func(row):
     return "negative"
 
 def main():
-    # time = sys.argv[1]
-    # """##Fetching Data"""
-    # df_exp = pd.read_csv(glob.glob(time + "_results/*_all_exp_results.csv")[0])
-    # df_runs = pd.read_csv(glob.glob(time + "_results/*_all_run_results.csv")[0])
-    # df_env = pd.read_csv(glob.glob(time + "_results/*_all_env_out.csv")[0])
-    df_exp = pd.read_csv("examples/test_data.csv")
-
-    """##Preprocessing"""
-    # Split by rand vs seq
-    df_exp_rand = df_exp[df_exp['random'] == 1]
-    df_exp_seq = df_exp[df_exp['random'] == 0]
-
+    df = pd.read_csv('examples/test_data.csv')
     #seq data
     shapiro_wilk_seq, shapiro_stats = SW_test(df_exp_seq,"result", ["exp_command", "hostname"])
     normally_distributed_seq = shapiro_wilk_seq[shapiro_wilk_seq["S-W Test"]>0.05]
