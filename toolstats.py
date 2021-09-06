@@ -22,7 +22,7 @@ def process_data(df):
 def SW_test(df,measure,columns):
   #columns = ["hw_type", "testname", "dvfs", "socket_num","MT"]
   df_cols = ['S-W Test', 'length'] + columns
-  shapiro_wilk = pd.DataFrame(columns=df_cols) #This defines a dataframe that contains the pvalues and the configuration information along with number of datapoints per config
+  shapiro_wilk = pd.DataFrame(columns=df_cols)
 
   for key, grp in df.groupby(columns):
       #if(len(grp)>=50):
@@ -42,7 +42,8 @@ def SW_test(df,measure,columns):
 """
 
 def percent_difference(v_experiment,v_control):
-  return ((v_experiment.mean() - v_control.mean()) / v_control.mean()) * 100
+    # The paper reports this as fixed-random/fixed * 100
+    return ((v_control.mean() - v_experiment.mean()) / v_control.mean()) * 100
 
 def effect_size_eta_squared_KW(v_experiment, v_control):
   """
@@ -60,61 +61,83 @@ def calc_main(df,measure, configuration_key):
   sample_count_thresh = 50
   df_effect = pd.DataFrame(columns = configuration_key + ["P_Diff","effect_size_KW", "Kruskal_p"])
 
+  # Compare between fixed and random for each configuration
   for idx, grp in df.groupby(configuration_key):
     random_sample = grp[grp.random == 1][measure].values
     random_sample = random_sample.astype(np.float64)
     seq_sample = grp[grp.random == 0][measure].values
     seq_sample = seq_sample.astype(np.float64)
-
     # if (len(random_sample) >= sample_count_thresh) and (len(seq_sample) >= sample_count_thresh): #WHEN SUFFICIENT DATA IS PRESENT
-    df_effect.loc[len(df_effect)] = list(idx) + [percent_difference(random_sample,seq_sample), effect_size_eta_squared_KW(random_sample,seq_sample), stats.kruskal(random_sample, seq_sample)[1]]
+    df_effect.loc[len(df_effect)] = \
+                    list(idx) + \
+                    [percent_difference(random_sample,seq_sample),
+                    effect_size_eta_squared_KW(random_sample,seq_sample),
+                    stats.kruskal(random_sample, seq_sample)[1]]
 
-  return(df_effect)
+  return df_effect
 
-def func(row):
+def pos_or_neg(row):
   if(row["P_Diff"]>0):
     return "positive"
   else:
     return "negative"
 
-def main():
-    df = pd.read_csv('examples/test_data.csv')
-    #seq data
-    shapiro_wilk_seq, shapiro_stats = SW_test(df_exp_seq,"result", ["exp_command", "hostname"])
-    normally_distributed_seq = shapiro_wilk_seq[shapiro_wilk_seq["S-W Test"]>0.05]
-    print("Sequential Data")
-    print(normally_distributed_seq)
+def write_sw_results(shapiro, shapiro_stats):
+    normally_distributed = shapiro[shapiro["S-W Test"]>0.05]
+    print(normally_distributed)
     print("Number of configurations not normally distributed", shapiro_stats[0])
     print("Number of configurations normally distributed", shapiro_stats[1])
     print("Fraction of configurations not normally distributed", shapiro_stats[2])
+    print("\n\n")
 
-    #rand data
-    shapiro_wilk_rand, shapiro_stats = SW_test(df_exp_rand,"result", ["exp_command", "hostname"])
-    normally_distributed_rand = shapiro_wilk_rand[shapiro_wilk_rand["S-W Test"]>0.05]
-    print("Random Data")
-    print(normally_distributed_rand)
-    print("Number of configurations not normally distributed", shapiro_stats[0])
-    print("Number of configurations normally distributed", shapiro_stats[1])
-    print("Fraction of configurations not normally distributed", shapiro_stats[2])
-
-    """##Does order affect Benchmarks"""
-    df_all = df_exp_seq.append(df_exp_rand)
-    df_effect = calc_main(df_all,"result", ["exp_command", "hostname"])
-
+def write_kw_results(df_effect):
     #calculating average percentage difference
     df_effect["abs_P_Diff"] = df_effect["P_Diff"].apply(abs)
-    print(sum(df_effect["abs_P_Diff"].values)/ len(df_effect))
+    avg_pd = sum(df_effect["abs_P_Diff"].values) / len(df_effect)
+    print("Average percent difference: %f\n\n" % avg_pd)
 
     # Looking at whether the random or the sequential order performed better
-
-    df_effect["Pos_or_Neg"] = df_effect.apply(lambda row: func(row), axis=1)
+    print("Summary of Random vs. Sequential Performance")
+    print("----------------------------------------------")
+    df_effect["Pos_or_Neg"] = df_effect.apply(lambda row: pos_or_neg(row), axis=1)
     tmp = df_effect[df_effect["Kruskal_p"]<0.05]
     neg =  tmp[tmp["Pos_or_Neg"]== "negative"]
     pos = tmp[tmp["Pos_or_Neg"]== "positive"]
-    # Change better to other name
-    pos_neg = pd.DataFrame(columns=["Num_seq_better_rand","Median","90th","Num_rand_better_seq","neg_Median","neg_90th"])
-    pos_neg.loc[len(pos_neg)] = [len(neg),stat.median(neg["abs_P_Diff"].values), neg["abs_P_Diff"].quantile(0.9),len(pos),stat.median(pos["abs_P_Diff"].values),pos["abs_P_Diff"].quantile(0.9)]
-    print(pos_neg)
+    performance_summary = pd.DataFrame(columns=["num_seq_outperforms",
+                                                "Median",
+                                                "90th",
+                                                "num_rand_outperforms",
+                                                "neg_Median",
+                                                "neg_90th"])
+    performance_summary.loc[len(performance_summary)] = \
+                            [len(neg),
+                            stat.median(neg["abs_P_Diff"].values),
+                            neg["abs_P_Diff"].quantile(0.9),
+                            len(pos),
+                            stat.median(pos["abs_P_Diff"].values),
+                            pos["abs_P_Diff"].quantile(0.9)]
+    print(performance_summary.to_string(index=False))
+
+def main():
+    df = pd.read_csv('examples/test_data.csv')
+    df_exp_rand, df_exp_seq = process_data(df)
+
+    print("Running Shapiro-Wilk Test...\n")
+    print("Sequential Data")
+    print("----------------------------------------------")
+    #seq data
+    shapiro_wilk_seq, shapiro_stats = SW_test(df_exp_seq,"result", ["exp_command", "hostname"])
+    write_sw_results(shapiro_wilk_seq, shapiro_stats)
+    #rand data
+    print("Random Data")
+    print("----------------------------------------------")
+    shapiro_wilk_rand, shapiro_stats = SW_test(df_exp_rand,"result", ["exp_command", "hostname"])
+    write_sw_results(shapiro_wilk_rand, shapiro_stats)
+
+    """##Does order affect Benchmarks"""
+    print("Running Kruskal Wallis Test...")
+    df_effect = calc_main(df,"result", ["exp_command", "hostname"])
+    write_kw_results(df_effect)
 
 if __name__ == "__main__":
     main()
