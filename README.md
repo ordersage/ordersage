@@ -116,3 +116,14 @@ In order to automate the collection of results and statistical analysis of exper
 1. Results from each experiment must be collected and stored in a text file (file name specified in `config.py` as `results_file`) as a single column of floating-point numbers written in the order the experiments were called by the controller script.
 2. Result text file and machine spec information will moved to a results directory and transferred to the controller node together. The results directory path must be specified by the user in `config.py` as `results_dir`.
 3. All failed experiments must return a non-zero exit code, and also a value of the user's choice in the results text file.
+
+## Statistical Analysis
+
+Results from runs can be analyzed via `toolstats.py`. All data must be grouped by node type (TODO in controller.py).
+
+Results will be returned as follows:
+1. Shapiro Wilk: separates normally distributed data from not normally distributed data
+2. Kruskall Wallace: reports whether experiment order has a statistically significant impact on performance
+3. Percent Difference: difference between means of fixed vs random order
+4. Effect Size: Magnitude of difference
+5. Graphs?
