@@ -40,6 +40,7 @@ import threading
 # files from tool repo
 import config
 from allocation import Allocation
+from toolstats import run_stats
 
 # Config file parsing
 from configparser import ConfigParser
@@ -513,6 +514,7 @@ def run_multiple_nodes(allocation, results_dir, exps):
 def concat_results(results_dir, timestamp, file_pattern, concat_name):
     df = pd.concat(map(pd.read_csv, glob.glob(os.path.join(results_dir, file_pattern))))
     df.to_csv(results_dir + "/" + timestamp + concat_name, index=False)
+    return df
 
 #####################
 ### Main function ###
@@ -540,12 +542,15 @@ def main():
     else:
         LOG.error("Something went wrong. No nodes allocated")
     # Save all results to single file
-    concat_results(results_dir, timestamp,
+    all_exps = concat_results(results_dir, timestamp,
                 '*_experiment_results.csv', "_all_exp_results.csv")
-    concat_results(results_dir, timestamp,
+    all_runs = concat_results(results_dir, timestamp,
                 '*_run_results.csv', "_all_run_results.csv")
-    concat_results(results_dir, timestamp,
+    all_envs = concat_results(results_dir, timestamp,
                 '*_env_out.csv', "_all_env_out.csv")
+
+    # Run statistical analysis
+    run_stats(all_exps)
 
     # Releasing allocated resources
     release_resources_wrapper(args, allocation)
