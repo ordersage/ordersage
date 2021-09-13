@@ -60,16 +60,20 @@ def calc_main(df,measure, configuration_key):
   # Samples with fewer than this number of values will not be considered
   sample_count_thresh = 50
   df_effect = pd.DataFrame(columns = configuration_key + ["P_Diff","effect_size_KW", "Kruskal_p"])
-
   # Compare between fixed and random for each configuration
   for idx, grp in df.groupby(configuration_key):
     random_sample = grp[grp.random == 1][measure].values
     random_sample = random_sample.astype(np.float64)
     seq_sample = grp[grp.random == 0][measure].values
     seq_sample = seq_sample.astype(np.float64)
+
+    if len(configuration_key) == 1:
+        config = [idx]
+    else:
+        config = list(idx)
     # if (len(random_sample) >= sample_count_thresh) and (len(seq_sample) >= sample_count_thresh): #WHEN SUFFICIENT DATA IS PRESENT
     df_effect.loc[len(df_effect)] = \
-                    list(idx) + \
+                    config + \
                     [percent_difference(random_sample,seq_sample),
                     effect_size_eta_squared_KW(random_sample,seq_sample),
                     stats.kruskal(random_sample, seq_sample)[1]]
@@ -133,10 +137,10 @@ def write_kw_results(df_effect):
     print()
     print()
 
-def run_single_node_stats(data, hostname):
-
+def run_stats(data):
     df_exp_rand, df_exp_seq = process_data(data)
-    print("Running Shapiro-Wilk Test for " + hostname + "...\n")
+
+    print("Running Shapiro-Wilk Test...\n")
     print("Sequential Data")
     print("----------------------------------------------")
     #seq data
@@ -149,20 +153,19 @@ def run_single_node_stats(data, hostname):
     write_sw_results(shapiro_wilk_rand, shapiro_stats)
 
     """##Does order affect Benchmarks"""
-    print("Running Kruskal Wallis Test...")
+    print("Running Kruskal Wallis Test Separting by Node...")
     df_effect = calc_main(data,"result", ["exp_command", "hostname"])
     write_kw_results(df_effect)
+    print()
 
-def run_multi_node_stats(data):
-    for idx,grp in data.groupby('hostname'):
-        run_single_node_stats(grp, idx)
+    print("Running Kruskal Wallis Test Combining Nodes...")
+    df_effect = calc_main(data,"result", ["exp_command"])
+    write_kw_results(df_effect)
+
 
 def main():
     df = pd.read_csv('examples/test_data.csv')
-    if len(df['hostname'].unique()) == 1:
-        run_single_node_stats(df, "host")
-    else:
-        run_multi_node_stats(df)
+    run_stats(df)
 
 
 if __name__ == "__main__":
