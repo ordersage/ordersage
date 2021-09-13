@@ -84,11 +84,24 @@ def pos_or_neg(row):
 
 def write_sw_results(shapiro, shapiro_stats):
     normally_distributed = shapiro[shapiro["S-W Test"]>0.05]
-    print(normally_distributed)
+    if len(normally_distributed) > 0:
+        print(normally_distributed)
     print("Number of configurations not normally distributed", shapiro_stats[0])
     print("Number of configurations normally distributed", shapiro_stats[1])
     print("Fraction of configurations not normally distributed", shapiro_stats[2])
     print("\n\n")
+
+def check_median(df, column):
+    try:
+        return stat.median(df[column].values)
+    except:
+        return np.nan
+
+def check_ninety(df, column):
+    try:
+        return df[column].quantile(0.9)
+    except:
+        return np.nan
 
 def write_kw_results(df_effect):
     #calculating average percentage difference
@@ -104,25 +117,26 @@ def write_kw_results(df_effect):
     neg =  tmp[tmp["Pos_or_Neg"]== "negative"]
     pos = tmp[tmp["Pos_or_Neg"]== "positive"]
     performance_summary = pd.DataFrame(columns=["num_seq_outperforms",
-                                                "Median",
-                                                "90th",
+                                                "seq_Median",
+                                                "seq_90th",
                                                 "num_rand_outperforms",
-                                                "neg_Median",
-                                                "neg_90th"])
+                                                "rand_Median",
+                                                "rand_90th"])
     performance_summary.loc[len(performance_summary)] = \
                             [len(neg),
-                            stat.median(neg["abs_P_Diff"].values),
-                            neg["abs_P_Diff"].quantile(0.9),
+                            check_median(neg,"abs_P_Diff"),
+                            check_ninety(neg, "abs_P_Diff"),
                             len(pos),
-                            stat.median(pos["abs_P_Diff"].values),
-                            pos["abs_P_Diff"].quantile(0.9)]
+                            check_median(pos,"abs_P_Diff"),
+                            check_ninety(pos,"abs_P_Diff")]
     print(performance_summary.to_string(index=False))
+    print()
+    print()
 
-def main():
-    df = pd.read_csv('examples/test_data.csv')
-    df_exp_rand, df_exp_seq = process_data(df)
+def run_single_node_stats(data, hostname):
 
-    print("Running Shapiro-Wilk Test...\n")
+    df_exp_rand, df_exp_seq = process_data(data)
+    print("Running Shapiro-Wilk Test for " + hostname + "...\n")
     print("Sequential Data")
     print("----------------------------------------------")
     #seq data
@@ -136,8 +150,20 @@ def main():
 
     """##Does order affect Benchmarks"""
     print("Running Kruskal Wallis Test...")
-    df_effect = calc_main(df,"result", ["exp_command", "hostname"])
+    df_effect = calc_main(data,"result", ["exp_command", "hostname"])
     write_kw_results(df_effect)
+
+def run_multi_node_stats(data):
+    for idx,grp in data.groupby('hostname'):
+        run_single_node_stats(grp, idx)
+
+def main():
+    df = pd.read_csv('examples/test_data.csv')
+    if len(df['hostname'].unique()) == 1:
+        run_single_node_stats(df, "host")
+    else:
+        run_multi_node_stats(df)
+
 
 if __name__ == "__main__":
     main()
