@@ -9,8 +9,10 @@ import scipy.stats as stats
 #TODO:
 #       exclude runs that had a failure
 #       test each node individually, then together and compare results
-#       configure CI testing (waiting on code from Nikhil)
+#           Update with new plan from 9/16
 #       produce a report of statistical results
+#       configure CI testing (waiting on code from Nikhil)
+
 
 def process_data(df):
     df_exp_rand = df[df['random'] == 1]
@@ -76,7 +78,7 @@ def calc_main(df,measure, configuration_key):
                     config + \
                     [percent_difference(random_sample,seq_sample),
                     effect_size_eta_squared_KW(random_sample,seq_sample),
-                    stats.kruskal(random_sample, seq_sample)[1]]
+                    stats.kruskal(random_sample, seq_sample)[1]]  # can just calculate this once instaead of also in effect size
 
   return df_effect
 
