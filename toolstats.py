@@ -97,13 +97,13 @@ def write_sw_results(shapiro, shapiro_stats):
     print("Fraction of configurations not normally distributed", shapiro_stats[2])
     print("\n\n")
 
-def check_median(df, column):
+def get_median(df, column):
     try:
         return stat.median(df[column].values)
     except:
         return np.nan
 
-def check_ninety(df, column):
+def get_ninety(df, column):
     try:
         return df[column].quantile(0.9)
     except:
@@ -118,10 +118,12 @@ def write_kw_results(df_effect):
     # Looking at whether the random or the sequential order performed better
     print("Summary of Random vs. Sequential Performance")
     print("----------------------------------------------")
+    # column of fixed greater than random and apply ops on that
     df_effect["Pos_or_Neg"] = df_effect.apply(lambda row: pos_or_neg(row), axis=1)
     tmp = df_effect[df_effect["Kruskal_p"]<0.05]
     neg =  tmp[tmp["Pos_or_Neg"]== "negative"]
     pos = tmp[tmp["Pos_or_Neg"]== "positive"]
+    # add 10th percentile
     performance_summary = pd.DataFrame(columns=["num_seq_outperforms",
                                                 "seq_Median",
                                                 "seq_90th",
@@ -130,29 +132,28 @@ def write_kw_results(df_effect):
                                                 "rand_90th"])
     performance_summary.loc[len(performance_summary)] = \
                             [len(neg),
-                            check_median(neg,"abs_P_Diff"),
-                            check_ninety(neg, "abs_P_Diff"),
+                            get_median(neg,"abs_P_Diff"),
+                            get_ninety(neg, "abs_P_Diff"),
                             len(pos),
-                            check_median(pos,"abs_P_Diff"),
-                            check_ninety(pos,"abs_P_Diff")]
+                            get_median(pos,"abs_P_Diff"),
+                            get_ninety(pos,"abs_P_Diff")]
     print(performance_summary.to_string(index=False))
     print()
     print()
 
 def run_stats(data):
-    df_exp_rand, df_exp_seq = process_data(data)
+    df_exp_random, df_exp_fixed = process_data(data)
 
-    print("Running Shapiro-Wilk Test...\n")
-    print("Sequential Data")
+    print("Running Shapiro-Wilk on fixed data")
     print("----------------------------------------------")
-    #seq data
-    shapiro_wilk_seq, shapiro_stats = SW_test(df_exp_seq,"result", ["exp_command", "hostname"])
-    write_sw_results(shapiro_wilk_seq, shapiro_stats)
-    #rand data
+    # Fixed data
+    shapiro_wilk_fixed, shapiro_stats = SW_test(df_exp_fixed,"result", ["exp_command", "hostname"])
+    write_sw_results(shapiro_wilk_fixed, shapiro_stats)
+    # Random data
     print("Random Data")
     print("----------------------------------------------")
-    shapiro_wilk_rand, shapiro_stats = SW_test(df_exp_rand,"result", ["exp_command", "hostname"])
-    write_sw_results(shapiro_wilk_rand, shapiro_stats)
+    shapiro_wilk_random, shapiro_stats = SW_test(df_exp_random,"result", ["exp_command", "hostname"])
+    write_sw_results(shapiro_wilk_random, shapiro_stats)
 
     """##Does order affect Benchmarks"""
     print("Running Kruskal Wallis Test Separting by Node...")
@@ -163,7 +164,6 @@ def run_stats(data):
     print("Running Kruskal Wallis Test Combining Nodes...")
     df_effect = calc_main(data,"result", ["exp_command"])
     write_kw_results(df_effect)
-
 
 def main():
     df = pd.read_csv('examples/test_data.csv')

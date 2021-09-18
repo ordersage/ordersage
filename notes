@@ -1,0 +1,11 @@
+- change sequential to fixed
+
+control: fixed
+experiment: random
+
+neg: num_seq_outperforms -> 'fixed_greater_count'
+pos: num_rand_outperforms -> 'random_greater_count'
+abs_P_difference
+
+positive percent difference: fixed greater than random 'fixed_greater_random'
+negative percent difference: random greater than fixed 'random_greater_fixed'
