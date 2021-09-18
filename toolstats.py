@@ -65,15 +65,6 @@ def pos_or_neg(row):
   else:
     return "negative"
 
-def write_sw_results(shapiro, shapiro_stats):
-    normally_distributed = shapiro[shapiro["S-W Test"]>0.05]
-    if len(normally_distributed) > 0:
-        print(normally_distributed)
-    print("Number of configurations not normally distributed", shapiro_stats[0])
-    print("Number of configurations normally distributed", shapiro_stats[1])
-    print("Fraction of configurations not normally distributed", shapiro_stats[2])
-    print("\n\n")
-
 def get_median(df, column):
     try:
         return stat.median(df[column].values)
@@ -117,56 +108,10 @@ def write_kw_results(df_effect):
     print(performance_summary.to_string(index=False))
     print()
     print()
-
+##############################################################################
 def process_data(data):
     # keep for later use potentially
     return data
-
-def run_group_stats(data, group=['exp_command']):
-    fixed_data = data[data['random'] == 0]
-    random_data = data[data['random'] == 1]
-
-    # Shapiro-Wilk to test for normality
-    print("Running Shapiro-Wilk on fixed data")
-    print("----------------------------------------------")
-    shapiro_wilk_fixed, shapiro_stats = SW_test(fixed_data,"result",group)
-    write_sw_results(shapiro_wilk_fixed, shapiro_stats)
-    print("Running Shapiro-Wilk on random data")
-    print("----------------------------------------------")
-    shapiro_wilk_random, shapiro_stats = SW_test(random_data,"result",group)
-    write_sw_results(shapiro_wilk_random, shapiro_stats)
-
-    """##Does order affect Benchmarks"""
-    print("Running Kruskal Wallis")
-    print("----------------------------------------------")
-    df_effect = calc_main(data,"result", group)
-    write_kw_results(df_effect)
-
-def compare_single_node(combined_stats, single_stats):
-    return None
-
-"""##SHAPIRO WILK TEST"""
-
-def SW_test(df,measure,columns):
-  df_cols = ['S-W Test', 'length'] + columns
-  shapiro_wilk = pd.DataFrame(columns=df_cols)
-
-  for key, grp in df.groupby(columns):
-      #if(len(grp)>=50):
-      if len(columns) == 1:
-          config = [key]
-      else:
-          config = list(key)
-      print(key)
-      shapiro_wilk.loc[len(shapiro_wilk)] = [stats.shapiro(grp[measure])[1], len(grp)] + config
-
-  Not_normal = shapiro_wilk[shapiro_wilk["S-W Test"]<0.05]
-  Num_config_not_normal = len(Not_normal)
-  Num_config_normal= len(shapiro_wilk)-len(Not_normal)
-  fraction_not_normal= len(Not_normal)/len(shapiro_wilk)
-  shapiro_stats = [Num_config_not_normal,Num_config_normal,fraction_not_normal]
-
-  return shapiro_wilk, shapiro_stats
 
 def run_stats(data):
     # Record single or multinode and split data by order type
@@ -177,7 +122,7 @@ def run_stats(data):
     if n_nodes == 1:
         print("Running stats for single node")
         print("----------------------------------------------")
-        node_stats.append(run_group_stats(data))
+        node_stats = run_group_stats(data)
     else:
         # run stats for all
         print("Running stats for combined nodes")
@@ -191,6 +136,66 @@ def run_stats(data):
         compare_single_nod(combined_stats, node_stats)
 
     # TODO Write stats data to csv
+
+def run_group_stats(data, group=['exp_command']):
+    stats = pd.DataFrame
+    fixed_data = data[data['random'] == 0]
+    random_data = data[data['random'] == 1]
+
+    # Shapiro-Wilk to test for normality
+    print("Running Shapiro-Wilk on fixed data")
+    print("----------------------------------------------")
+    shapiro_wilk_fixed, shapiro_stats_fixed = SW_test(fixed_data,"result",group)
+    write_sw_results(shapiro_wilk_fixed, shapiro_stats_fixed)
+
+    print("Running Shapiro-Wilk on random data")
+    print("----------------------------------------------")
+    shapiro_wilk_random, shapiro_stats = SW_test(random_data,"result",group)
+    write_sw_results(shapiro_wilk_random, shapiro_stats)
+
+    # Kruskal Wallis
+    print("Running Kruskal Wallis")
+    print("----------------------------------------------")
+    kw_stats = calc_main(data,"result", group)
+    write_kw_results(kw_stats)
+
+    # TODO: Add in confidence interval
+    return stats
+
+"""##SHAPIRO WILK TEST"""
+
+def SW_test(df,measure,group):
+  df_cols = ['S-W test statistic','S-W p-value'] + group
+  shapiro_wilk = pd.DataFrame(columns=df_cols)
+
+  for key, grp in df.groupby(group):
+      if len(columns) == 1:
+          config = [key]
+      else:
+          config = list(key)
+      shapiro_wilk.loc[len(shapiro_wilk)] = [stats.shapiro(grp[measure])[0],
+                                            stats.shapiro(grp[measure])[1]]
+                                            + config
+
+  num_not_normal = len(shapiro_wilk[shapiro_wilk["S-W Test"]<0.05])
+  num_normal = len(shapiro_wilk) - num_not_normal
+  frac_not_normal = num_not_normal / len(shapiro_wilk)
+  shapiro_stats = [num_not_normal, num_normal, frac_not_normal]
+
+  return shapiro_wilk, shapiro_stats
+
+
+  def write_sw_results(shapiro, shapiro_stats):
+      normally_distributed = shapiro[shapiro["S-W Test"]>0.05]
+      if len(normally_distributed) > 0:
+          print(normally_distributed)
+      print("Number of configurations not normally distributed", shapiro_stats[0])
+      print("Number of configurations normally distributed", shapiro_stats[1])
+      print("Fraction of configurations not normally distributed", shapiro_stats[2])
+      print("\n\n")
+
+def compare_single_node(combined_stats, single_stats):
+    return None
 
 
 def main():
