@@ -126,36 +126,21 @@ def run_group_stats(data, group=['exp_command']):
     fixed_data = data[data['random'] == 0]
     random_data = data[data['random'] == 1]
 
-    # Shapiro-Wilk
-    shapiro_wilk_fixed, shapiro_stats = SW_test(df_exp_fixed,"result",group)
-    write_sw_results(shapiro_wilk_fixed, shapiro_stats)
-    # Random data
-    print("Random Data")
-    print("----------------------------------------------")
-    shapiro_wilk_random, shapiro_stats = SW_test(df_exp_random,"result", ["exp_command", "hostname"])
-    write_sw_results(shapiro_wilk_random, shapiro_stats)
-
+    # Shapiro-Wilk to test for normality
     print("Running Shapiro-Wilk on fixed data")
     print("----------------------------------------------")
-    # Fixed data
-    shapiro_wilk_fixed, shapiro_stats = SW_test(df_exp_fixed,"result", ["exp_command"])
+    shapiro_wilk_fixed, shapiro_stats = SW_test(fixed_data,"result",group)
     write_sw_results(shapiro_wilk_fixed, shapiro_stats)
-    # Random data
-    print("Random Data")
+    print("Running Shapiro-Wilk on random data")
     print("----------------------------------------------")
-    shapiro_wilk_random, shapiro_stats = SW_test(df_exp_random,"result", ["exp_command"])
+    shapiro_wilk_random, shapiro_stats = SW_test(random_data,"result",group)
     write_sw_results(shapiro_wilk_random, shapiro_stats)
 
     """##Does order affect Benchmarks"""
-    print("Running Kruskal Wallis Test Separting by Node...")
-    df_effect = calc_main(data,"result", ["exp_command", "hostname"])
+    print("Running Kruskal Wallis")
+    print("----------------------------------------------")
+    df_effect = calc_main(data,"result", group)
     write_kw_results(df_effect)
-    print()
-
-    print("Running Kruskal Wallis Test Combining Nodes...")
-    df_effect = calc_main(data,"result", ["exp_command"])
-    write_kw_results(df_effect)
-    return None
 
 def compare_single_node(combined_stats, single_stats):
     return None
