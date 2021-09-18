@@ -61,8 +61,14 @@ def run_group_stats(data, group=['exp_command']):
     # Kruskal Wallis
     print("Running Kruskal Wallis")
     print("----------------------------------------------")
-    kw_stats = calc_main(data,"result", group)
-    write_kw_results(kw_stats)
+    kruskall_wallace = kw_test(data,"result", group)
+    write_kw_results(kruskall_wallace)
+
+    # Effect Size
+    print("Calculating percent difference")
+    print("----------------------------------------------")
+
+
 
     # TODO: Add in confidence interval
     return stats
@@ -99,26 +105,14 @@ def SW_test(df,measure,group):
       print("Fraction of configurations not normally distributed", shapiro_stats[2])
       print("\n\n")
 
-
-def percent_difference(v_experiment,v_control):
-    # The paper reports this as fixed-random/fixed * 100
-    return ((v_control.mean() - v_experiment.mean()) / v_control.mean()) * 100
-
-def effect_size_eta_squared_KW(v_experiment, v_control):
-  """
-  Returns the ets_sqared measure for effect size calculated for the KW test
-  For details see: http://www.tss.awf.poznan.pl/files/3_Trends_Vol21_2014__no1_20.pdf
-  (Chose eta_squared over the epsilon squared since it is the more popular method)
-  """
-  H = stats.kruskal(v_experiment,v_control)[0]
-  k = 1
-  n = len(v_experiment) + len(v_control)
-  return ((H-k + 1)/(n-k))
-
-def kruskal_wallace(df, measure, group):
+def KW_test(df, measure, group):
   # Samples with fewer than this number of values will not be considered
   sample_count_thresh = 50
-  kruskal_wallace = pd.DataFrame(columns = group + ['K-W test statistic', 'K-W p-value'])
+  kruskal_wallace = pd.DataFrame(columns = group + \
+                                            ['K-W test statistic',
+                                            'K-W p-value',
+                                            'percent difference',
+                                            'K-W effect size'])
 
   # Compare between fixed and random for each configuration
   for idx, grp in df.groupby(group):
@@ -127,17 +121,39 @@ def kruskal_wallace(df, measure, group):
     random_results= grp[grp.random == 1][measure].values
     random_results = random_results.astype(np.float64)
 
-    # run test
+    # run test and compute results
     kw_stats = stats.kruskall(fixed_results, random_results)
+    p_diff = percent_difference(fixed_results, random_results)
+    effect_size = effect_size_eta_squared_KW(fixed_results, random_results, kw_stats[0])
+
     # needed for use with group size of one or >1
     if len(group) == 1:
         config = [idx]
     else:
         config = list(idx)
     # if (len(random_sample) >= sample_count_thresh) and (len(seq_sample) >= sample_count_thresh): #WHEN SUFFICIENT DATA IS PRESENT
-    kruskal_wallace.loc[len(df_effect)] = config + [kw_stats[0], kw_stats[1]]
+    kruskal_wallace.loc[len(df_effect)] = config +
+                                            [kw_stats[0],
+                                            kw_stats[1],
+                                            p_diff,
+                                            effect_size]
 
   return kruskal_wallace
+
+def percent_difference(v_control, v_experiment):
+    # The paper reports this as fixed-random/fixed * 100
+    return ((v_control.mean() - v_experiment.mean()) / v_control.mean()) * 100
+
+def effect_size_eta_squared_KW(v_control, v_experiment, kw_H):
+  """
+  Returns the ets_sqared measure for effect size calculated for the KW test
+  For details see: http://www.tss.awf.poznan.pl/files/3_Trends_Vol21_2014__no1_20.pdf
+  (Chose eta_squared over the epsilon squared since it is the more popular method)
+  """
+  k = 1
+  n = len(v_experiment) + len(v_control)
+  return ((kw_H-k + 1)/(n-k))
+
 
 def pos_or_neg(row):
   if(row["P_Diff"]>0):
