@@ -14,29 +14,6 @@ import scipy.stats as stats
 #       configure CI testing (waiting on code from Nikhil)
 
 
-def process_data(df):
-    df_exp_rand = df[df['random'] == 1]
-    df_exp_seq = df[df['random'] == 0]
-    return df_exp_rand, df_exp_seq
-
-"""##SHAPIRO WILK TEST"""
-
-def SW_test(df,measure,columns):
-  #columns = ["hw_type", "testname", "dvfs", "socket_num","MT"]
-  df_cols = ['S-W Test', 'length'] + columns
-  shapiro_wilk = pd.DataFrame(columns=df_cols)
-
-  for key, grp in df.groupby(columns):
-      #if(len(grp)>=50):
-      shapiro_wilk.loc[len(shapiro_wilk)] = [stats.shapiro(grp[measure])[1], len(grp)] + list(key)
-
-  Not_normal = shapiro_wilk[shapiro_wilk["S-W Test"]<0.05]
-  Num_config_not_normal = len(Not_normal)
-  Num_config_normal= len(shapiro_wilk)-len(Not_normal)
-  fraction_not_normal= len(Not_normal)/len(shapiro_wilk)
-  shapiro_stats = [Num_config_not_normal,Num_config_normal,fraction_not_normal]
-
-  return shapiro_wilk, shapiro_stats
 
 """#Does Order Matter
 
@@ -141,18 +118,32 @@ def write_kw_results(df_effect):
     print()
     print()
 
-def run_stats(data):
-    df_exp_random, df_exp_fixed = process_data(data)
+def process_data(data):
+    # keep for later use potentially
+    return data
 
-    print("Running Shapiro-Wilk on fixed data")
-    print("----------------------------------------------")
-    # Fixed data
-    shapiro_wilk_fixed, shapiro_stats = SW_test(df_exp_fixed,"result", ["exp_command", "hostname"])
+def run_group_stats(data, group=['exp_command']):
+    fixed_data = data[data['random'] == 0]
+    random_data = data[data['random'] == 1]
+
+    # Shapiro-Wilk
+    shapiro_wilk_fixed, shapiro_stats = SW_test(df_exp_fixed,"result",group)
     write_sw_results(shapiro_wilk_fixed, shapiro_stats)
     # Random data
     print("Random Data")
     print("----------------------------------------------")
     shapiro_wilk_random, shapiro_stats = SW_test(df_exp_random,"result", ["exp_command", "hostname"])
+    write_sw_results(shapiro_wilk_random, shapiro_stats)
+
+    print("Running Shapiro-Wilk on fixed data")
+    print("----------------------------------------------")
+    # Fixed data
+    shapiro_wilk_fixed, shapiro_stats = SW_test(df_exp_fixed,"result", ["exp_command"])
+    write_sw_results(shapiro_wilk_fixed, shapiro_stats)
+    # Random data
+    print("Random Data")
+    print("----------------------------------------------")
+    shapiro_wilk_random, shapiro_stats = SW_test(df_exp_random,"result", ["exp_command"])
     write_sw_results(shapiro_wilk_random, shapiro_stats)
 
     """##Does order affect Benchmarks"""
@@ -164,6 +155,58 @@ def run_stats(data):
     print("Running Kruskal Wallis Test Combining Nodes...")
     df_effect = calc_main(data,"result", ["exp_command"])
     write_kw_results(df_effect)
+    return None
+
+def compare_single_node(combined_stats, single_stats):
+    return None
+
+"""##SHAPIRO WILK TEST"""
+
+def SW_test(df,measure,columns):
+  df_cols = ['S-W Test', 'length'] + columns
+  shapiro_wilk = pd.DataFrame(columns=df_cols)
+
+  for key, grp in df.groupby(columns):
+      #if(len(grp)>=50):
+      if len(columns) == 1:
+          config = [key]
+      else:
+          config = list(key)
+      print(key)
+      shapiro_wilk.loc[len(shapiro_wilk)] = [stats.shapiro(grp[measure])[1], len(grp)] + config
+
+  Not_normal = shapiro_wilk[shapiro_wilk["S-W Test"]<0.05]
+  Num_config_not_normal = len(Not_normal)
+  Num_config_normal= len(shapiro_wilk)-len(Not_normal)
+  fraction_not_normal= len(Not_normal)/len(shapiro_wilk)
+  shapiro_stats = [Num_config_not_normal,Num_config_normal,fraction_not_normal]
+
+  return shapiro_wilk, shapiro_stats
+
+def run_stats(data):
+    # Record single or multinode and split data by order type
+    n_nodes = len(data['hostname'].unique())
+    combined_stats = [] # change to dataframe after we get cols
+    node_stats = [] # change to dataframe after we get cols
+
+    if n_nodes == 1:
+        print("Running stats for single node")
+        print("----------------------------------------------")
+        node_stats.append(run_group_stats(data))
+    else:
+        # run stats for all
+        print("Running stats for combined nodes")
+        print("----------------------------------------------")
+        combined_stats = run_group_stats(data)
+        print("Running stats for individual nodes")
+        print("----------------------------------------------")
+        single_node_stats = run_group_stats(data, group=['hostname','exp_command'])
+        print("Comparing individual node stats with combined")
+        print("----------------------------------------------")
+        compare_single_nod(combined_stats, node_stats)
+
+    # TODO Write stats data to csv
+
 
 def main():
     df = pd.read_csv('examples/test_data.csv')
