@@ -13,101 +13,6 @@ import scipy.stats as stats
 #       produce a report of statistical results
 #       configure CI testing (waiting on code from Nikhil)
 
-
-
-"""#Does Order Matter
-
-##Function to calculate p-val and effect size for each setting
-"""
-
-def percent_difference(v_experiment,v_control):
-    # The paper reports this as fixed-random/fixed * 100
-    return ((v_control.mean() - v_experiment.mean()) / v_control.mean()) * 100
-
-def effect_size_eta_squared_KW(v_experiment, v_control):
-  """
-  Returns the ets_sqared measure for effect size calculated for the KW test
-  For details see: http://www.tss.awf.poznan.pl/files/3_Trends_Vol21_2014__no1_20.pdf
-  (Chose eta_squared over the epsilon squared since it is the more popular method)
-  """
-  H = stats.kruskal(v_experiment,v_control)[0]
-  k = 1
-  n = len(v_experiment) + len(v_control)
-  return ((H-k + 1)/(n-k))
-
-def calc_main(df,measure, configuration_key):
-  # Samples with fewer than this number of values will not be considered
-  sample_count_thresh = 50
-  df_effect = pd.DataFrame(columns = configuration_key + ["P_Diff","effect_size_KW", "Kruskal_p"])
-  # Compare between fixed and random for each configuration
-  for idx, grp in df.groupby(configuration_key):
-    random_sample = grp[grp.random == 1][measure].values
-    random_sample = random_sample.astype(np.float64)
-    seq_sample = grp[grp.random == 0][measure].values
-    seq_sample = seq_sample.astype(np.float64)
-
-    if len(configuration_key) == 1:
-        config = [idx]
-    else:
-        config = list(idx)
-    # if (len(random_sample) >= sample_count_thresh) and (len(seq_sample) >= sample_count_thresh): #WHEN SUFFICIENT DATA IS PRESENT
-    df_effect.loc[len(df_effect)] = \
-                    config + \
-                    [percent_difference(random_sample,seq_sample),
-                    effect_size_eta_squared_KW(random_sample,seq_sample),
-                    stats.kruskal(random_sample, seq_sample)[1]]  # can just calculate this once instaead of also in effect size
-
-  return df_effect
-
-def pos_or_neg(row):
-  if(row["P_Diff"]>0):
-    return "positive"
-  else:
-    return "negative"
-
-def get_median(df, column):
-    try:
-        return stat.median(df[column].values)
-    except:
-        return np.nan
-
-def get_ninety(df, column):
-    try:
-        return df[column].quantile(0.9)
-    except:
-        return np.nan
-
-def write_kw_results(df_effect):
-    #calculating average percentage difference
-    df_effect["abs_P_Diff"] = df_effect["P_Diff"].apply(abs)
-    avg_pd = sum(df_effect["abs_P_Diff"].values) / len(df_effect)
-    print("Average percent difference: %f\n\n" % avg_pd)
-
-    # Looking at whether the random or the sequential order performed better
-    print("Summary of Random vs. Sequential Performance")
-    print("----------------------------------------------")
-    # column of fixed greater than random and apply ops on that
-    df_effect["Pos_or_Neg"] = df_effect.apply(lambda row: pos_or_neg(row), axis=1)
-    tmp = df_effect[df_effect["Kruskal_p"]<0.05]
-    neg =  tmp[tmp["Pos_or_Neg"]== "negative"]
-    pos = tmp[tmp["Pos_or_Neg"]== "positive"]
-    # add 10th percentile
-    performance_summary = pd.DataFrame(columns=["num_seq_outperforms",
-                                                "seq_Median",
-                                                "seq_90th",
-                                                "num_rand_outperforms",
-                                                "rand_Median",
-                                                "rand_90th"])
-    performance_summary.loc[len(performance_summary)] = \
-                            [len(neg),
-                            get_median(neg,"abs_P_Diff"),
-                            get_ninety(neg, "abs_P_Diff"),
-                            len(pos),
-                            get_median(pos,"abs_P_Diff"),
-                            get_ninety(pos,"abs_P_Diff")]
-    print(performance_summary.to_string(index=False))
-    print()
-    print()
 ##############################################################################
 def process_data(data):
     # keep for later use potentially
@@ -165,7 +70,7 @@ def run_group_stats(data, group=['exp_command']):
 """##SHAPIRO WILK TEST"""
 
 def SW_test(df,measure,group):
-  df_cols = ['S-W test statistic','S-W p-value'] + group
+  df_cols = group + ['S-W test statistic','S-W p-value']
   shapiro_wilk = pd.DataFrame(columns=df_cols)
 
   for key, grp in df.groupby(group):
@@ -173,9 +78,9 @@ def SW_test(df,measure,group):
           config = [key]
       else:
           config = list(key)
-      shapiro_wilk.loc[len(shapiro_wilk)] = [stats.shapiro(grp[measure])[0],
+      shapiro_wilk.loc[len(shapiro_wilk)] = group +
+                                            [stats.shapiro(grp[measure])[0],
                                             stats.shapiro(grp[measure])[1]]
-                                            + config
 
   num_not_normal = len(shapiro_wilk[shapiro_wilk["S-W Test"]<0.05])
   num_normal = len(shapiro_wilk) - num_not_normal
@@ -193,6 +98,96 @@ def SW_test(df,measure,group):
       print("Number of configurations normally distributed", shapiro_stats[1])
       print("Fraction of configurations not normally distributed", shapiro_stats[2])
       print("\n\n")
+
+
+def percent_difference(v_experiment,v_control):
+    # The paper reports this as fixed-random/fixed * 100
+    return ((v_control.mean() - v_experiment.mean()) / v_control.mean()) * 100
+
+def effect_size_eta_squared_KW(v_experiment, v_control):
+  """
+  Returns the ets_sqared measure for effect size calculated for the KW test
+  For details see: http://www.tss.awf.poznan.pl/files/3_Trends_Vol21_2014__no1_20.pdf
+  (Chose eta_squared over the epsilon squared since it is the more popular method)
+  """
+  H = stats.kruskal(v_experiment,v_control)[0]
+  k = 1
+  n = len(v_experiment) + len(v_control)
+  return ((H-k + 1)/(n-k))
+
+def kruskal_wallace(df, measure, group):
+  # Samples with fewer than this number of values will not be considered
+  sample_count_thresh = 50
+  kruskal_wallace = pd.DataFrame(columns = group + ['K-W test statistic', 'K-W p-value'])
+
+  # Compare between fixed and random for each configuration
+  for idx, grp in df.groupby(group):
+    fixed_results = grp[grp.random == 0][measure].values
+    fixed_results = fixed_results.astype(np.float64)
+    random_results= grp[grp.random == 1][measure].values
+    random_results = random_results.astype(np.float64)
+
+    # run test
+    kw_stats = stats.kruskall(fixed_results, random_results)
+    # needed for use with group size of one or >1
+    if len(group) == 1:
+        config = [idx]
+    else:
+        config = list(idx)
+    # if (len(random_sample) >= sample_count_thresh) and (len(seq_sample) >= sample_count_thresh): #WHEN SUFFICIENT DATA IS PRESENT
+    kruskal_wallace.loc[len(df_effect)] = config + [kw_stats[0], kw_stats[1]]
+
+  return kruskal_wallace
+
+def pos_or_neg(row):
+  if(row["P_Diff"]>0):
+    return "positive"
+  else:
+    return "negative"
+
+def get_median(df, column):
+    try:
+        return stat.median(df[column].values)
+    except:
+        return np.nan
+
+def get_ninety(df, column):
+    try:
+        return df[column].quantile(0.9)
+    except:
+        return np.nan
+
+def write_kw_results(df_effect):
+    #calculating average percentage difference
+    df_effect["abs_P_Diff"] = df_effect["P_Diff"].apply(abs)
+    avg_pd = sum(df_effect["abs_P_Diff"].values) / len(df_effect)
+    print("Average percent difference: %f\n\n" % avg_pd)
+
+    # Looking at whether the random or the sequential order performed better
+    print("Summary of Random vs. Sequential Performance")
+    print("----------------------------------------------")
+    # column of fixed greater than random and apply ops on that
+    df_effect["Pos_or_Neg"] = df_effect.apply(lambda row: pos_or_neg(row), axis=1)
+    tmp = df_effect[df_effect["Kruskal_p"]<0.05]
+    neg =  tmp[tmp["Pos_or_Neg"]== "negative"]
+    pos = tmp[tmp["Pos_or_Neg"]== "positive"]
+    # add 10th percentile
+    performance_summary = pd.DataFrame(columns=["num_seq_outperforms",
+                                                "seq_Median",
+                                                "seq_90th",
+                                                "num_rand_outperforms",
+                                                "rand_Median",
+                                                "rand_90th"])
+    performance_summary.loc[len(performance_summary)] = \
+                            [len(neg),
+                            get_median(neg,"abs_P_Diff"),
+                            get_ninety(neg, "abs_P_Diff"),
+                            len(pos),
+                            get_median(pos,"abs_P_Diff"),
+                            get_ninety(pos,"abs_P_Diff")]
+    print(performance_summary.to_string(index=False))
+    print()
+    print()
 
 def compare_single_node(combined_stats, single_stats):
     return None
