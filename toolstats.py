@@ -64,12 +64,6 @@ def run_group_stats(data, group=['exp_command']):
     kruskall_wallace = kw_test(data,"result", group)
     write_kw_results(kruskall_wallace)
 
-    # Effect Size
-    print("Calculating percent difference")
-    print("----------------------------------------------")
-
-
-
     # TODO: Add in confidence interval
     return stats
 
@@ -111,7 +105,7 @@ def KW_test(df, measure, group):
   kruskal_wallace = pd.DataFrame(columns = group + \
                                             ['K-W test statistic',
                                             'K-W p-value',
-                                            'percent difference',
+                                            'percent diff',
                                             'K-W effect size'])
 
   # Compare between fixed and random for each configuration
@@ -154,56 +148,52 @@ def effect_size_eta_squared_KW(v_control, v_experiment, kw_H):
   n = len(v_experiment) + len(v_control)
   return ((kw_H-k + 1)/(n-k))
 
-
-def pos_or_neg(row):
-  if(row["P_Diff"]>0):
-    return "positive"
-  else:
-    return "negative"
-
-def get_median(df, column):
+def get_median(df):
     try:
-        return stat.median(df[column].values)
+        return stat.median(df.values)
     except:
         return np.nan
 
-def get_ninety(df, column):
+def get_percentile(df, quant):
     try:
-        return df[column].quantile(0.9)
+        return df.quantile(quant)
     except:
         return np.nan
 
-def write_kw_results(df_effect):
-    #calculating average percentage difference
-    df_effect["abs_P_Diff"] = df_effect["P_Diff"].apply(abs)
-    avg_pd = sum(df_effect["abs_P_Diff"].values) / len(df_effect)
+def write_kw_results(kw_data):
+    # calculating average percentage difference
+    kw_data['abs percent diff'] = kw_data['percent diff'].apply(abs)
+    avg_pd = sum(kw_data["abs percent diff"].values) / len(kw_data)
     print("Average percent difference: %f\n\n" % avg_pd)
 
     # Looking at whether the random or the sequential order performed better
-    print("Summary of Random vs. Sequential Performance")
+    print("Random vs. Fixed Order Performance")
     print("----------------------------------------------")
-    # column of fixed greater than random and apply ops on that
-    df_effect["Pos_or_Neg"] = df_effect.apply(lambda row: pos_or_neg(row), axis=1)
-    tmp = df_effect[df_effect["Kruskal_p"]<0.05]
-    neg =  tmp[tmp["Pos_or_Neg"]== "negative"]
-    pos = tmp[tmp["Pos_or_Neg"]== "positive"]
+    pos = kw_data[(kw_data['percent diff'] > 0) &
+                    (kw_data['K-W p-value'] < 0.05)]['abs percent diff']
+    neg = kw_data[(kw_data['percent diff'] < 0) &
+                    (kw_data['K-W p-value'] < 0.05)]['abs percent diff']
     # add 10th percentile
-    performance_summary = pd.DataFrame(columns=["num_seq_outperforms",
-                                                "seq_Median",
-                                                "seq_90th",
-                                                "num_rand_outperforms",
-                                                "rand_Median",
-                                                "rand_90th"])
+    performance_summary = pd.DataFrame(columns=["fixed_greater_count",
+                                                "fixed_Median",
+                                                "fixed_10th",
+                                                "fixed_90th",
+                                                "random_greater_count",
+                                                "random_Median",
+                                                "random_10th",
+                                                "random_90th"])
     performance_summary.loc[len(performance_summary)] = \
-                            [len(neg),
-                            get_median(neg,"abs_P_Diff"),
-                            get_ninety(neg, "abs_P_Diff"),
-                            len(pos),
-                            get_median(pos,"abs_P_Diff"),
-                            get_ninety(pos,"abs_P_Diff")]
+                            [len(pos),
+                            get_median(pos,"abs percent diff"),
+                            get_percentile(pos, .1),
+                            get_percentile(pos, .9),
+                            len(neg),
+                            get_median(neg,"abs percent diff"),
+                            get_percentile(neg, .1),
+                            get_percentile(neg, .9),]
     print(performance_summary.to_string(index=False))
-    print()
-    print()
+    return performance_summary
+
 
 def compare_single_node(combined_stats, single_stats):
     return None
