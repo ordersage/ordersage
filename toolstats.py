@@ -8,8 +8,6 @@ import scipy.stats as stats
 
 #TODO:
 #       exclude runs that had a failure
-#       test each node individually, then together and compare results
-#           Update with new plan from 9/16
 #       produce a report of statistical results
 #       configure CI testing (waiting on code from Nikhil)
 
@@ -21,58 +19,59 @@ def process_data(data):
 def run_stats(data):
     # Record single or multinode and split data by order type
     n_nodes = len(data['hostname'].unique())
-    combined_stats = [] # change to dataframe after we get cols
-    node_stats = [] # change to dataframe after we get cols
 
     if n_nodes == 1:
         print("Running stats for single node")
         print("----------------------------------------------")
-        node_stats = run_group_stats(data)
+        node_stats, summary = run_group_stats(data)
+        # TODO Write stats data to csv
     else:
         # run stats for all
         print("Running stats for combined nodes")
         print("----------------------------------------------")
-        combined_stats = run_group_stats(data)
+        combined_stats, summary_all = run_group_stats(data)
         print("Running stats for individual nodes")
         print("----------------------------------------------")
-        single_node_stats = run_group_stats(data, group=['hostname','exp_command'])
+        single_node_stats, summary_ind = run_group_stats(data, group=['hostname','exp_command'])
         print("Comparing individual node stats with combined")
         print("----------------------------------------------")
-        compare_single_nod(combined_stats, node_stats)
-
-    # TODO Write stats data to csv
+        #compare_single_nod(combined_stats, single_node_stats)
+        # TODO Write stats data to csv
 
 def run_group_stats(data, group=['exp_command']):
-    stats = pd.DataFrame
     fixed_data = data[data['random'] == 0]
     random_data = data[data['random'] == 1]
 
     # Shapiro-Wilk to test for normality
     print("Running Shapiro-Wilk on fixed data")
     print("----------------------------------------------")
-    shapiro_wilk_fixed, shapiro_stats_fixed = SW_test(fixed_data,"result",group)
-    write_sw_results(shapiro_wilk_fixed, shapiro_stats_fixed)
+    shapiro_wilk_fixed, shapiro_summary_fixed = SW_test(fixed_data,"result",group,"fixed")
 
     print("Running Shapiro-Wilk on random data")
     print("----------------------------------------------")
-    shapiro_wilk_random, shapiro_stats = SW_test(random_data,"result",group)
-    write_sw_results(shapiro_wilk_random, shapiro_stats)
+    shapiro_wilk_random, shapiro_summary_random = SW_test(random_data,"result",group, "random")
 
     # Kruskal Wallis
     print("Running Kruskal Wallis")
     print("----------------------------------------------")
-    kruskall_wallace = kw_test(data,"result", group)
-    write_kw_results(kruskall_wallace)
+    kruskal_wallace = kw_test(data,"result", group)
+    kw_summary = summarize_kw_results(kruskal_wallace)
 
+    stats = shapiro_wilk_fixed.merge(shapiro_wilk_random, how='outer', on=group)
+    stats = stats.merge(kruskal_wallace, how='outer', on=group)
+    summary = pd.concat(shapiro_summery_fixed, shapiro_summary_random, kw_summary,
+                        axis=1)
     # TODO: Add in confidence interval
-    return stats
+    return stats, summary
 
 """##SHAPIRO WILK TEST"""
-
-def SW_test(df,measure,group):
-  df_cols = group + ['S-W test statistic','S-W p-value']
+def SW_test(df, measure, group, order):
+  df_cols = group + ['S-W test statistic ' + order,
+                     'S-W p-value ' + order]
   shapiro_wilk = pd.DataFrame(columns=df_cols)
-
+  shapiro_stats = pd.DataFrame(['S-W Number not normal ' + order,
+                                'S-W Number normal ' + order,
+                                'Fraction not normal ' + order])
   for key, grp in df.groupby(group):
       if len(columns) == 1:
           config = [key]
@@ -80,24 +79,26 @@ def SW_test(df,measure,group):
           config = list(key)
       shapiro_wilk.loc[len(shapiro_wilk)] = group +
                                             [stats.shapiro(grp[measure])[0],
-                                            stats.shapiro(grp[measure])[1]]
+                                            stats.shapiro(grp[measure])[1],
+                                            order]
 
   num_not_normal = len(shapiro_wilk[shapiro_wilk["S-W Test"]<0.05])
   num_normal = len(shapiro_wilk) - num_not_normal
   frac_not_normal = num_not_normal / len(shapiro_wilk)
-  shapiro_stats = [num_not_normal, num_normal, frac_not_normal]
+  shapiro_stats.loc[len(shapiro_stats)] = [num_not_normal,
+                                            num_normal,
+                                            frac_not_normal]
+
+  normally_distributed = shapiro[shapiro["S-W p-value"]>0.05]
+
+  if len(normally_distributed) > 0:
+      print(normally_distributed)
+  print("Number of configurations not normally distributed", num_not_normal)
+  print("Number of configurations normally distributed", num_normal)
+  print("Fraction of configurations not normally distributed", frac_not_normal)
+  print("\n\n")
 
   return shapiro_wilk, shapiro_stats
-
-
-  def write_sw_results(shapiro, shapiro_stats):
-      normally_distributed = shapiro[shapiro["S-W Test"]>0.05]
-      if len(normally_distributed) > 0:
-          print(normally_distributed)
-      print("Number of configurations not normally distributed", shapiro_stats[0])
-      print("Number of configurations normally distributed", shapiro_stats[1])
-      print("Fraction of configurations not normally distributed", shapiro_stats[2])
-      print("\n\n")
 
 def KW_test(df, measure, group):
   # Samples with fewer than this number of values will not be considered
@@ -116,7 +117,7 @@ def KW_test(df, measure, group):
     random_results = random_results.astype(np.float64)
 
     # run test and compute results
-    kw_stats = stats.kruskall(fixed_results, random_results)
+    kw_stats = stats.kruskal(fixed_results, random_results)
     p_diff = percent_difference(fixed_results, random_results)
     effect_size = effect_size_eta_squared_KW(fixed_results, random_results, kw_stats[0])
 
@@ -160,13 +161,13 @@ def get_percentile(df, quant):
     except:
         return np.nan
 
-def write_kw_results(kw_data):
+def summarize_kw_results(kw_data):
     # calculating average percentage difference
     kw_data['abs percent diff'] = kw_data['percent diff'].apply(abs)
     avg_pd = sum(kw_data["abs percent diff"].values) / len(kw_data)
     print("Average percent difference: %f\n\n" % avg_pd)
 
-    # Looking at whether the random or the sequential order performed better
+    # Looking at whether the random or the fixed order performed better
     print("Random vs. Fixed Order Performance")
     print("----------------------------------------------")
     pos = kw_data[(kw_data['percent diff'] > 0) &
@@ -190,7 +191,7 @@ def write_kw_results(kw_data):
                             len(neg),
                             get_median(neg,"abs percent diff"),
                             get_percentile(neg, .1),
-                            get_percentile(neg, .9),]
+                            get_percentile(neg, .9)]
     print(performance_summary.to_string(index=False))
     return performance_summary
 
