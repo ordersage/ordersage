@@ -24,19 +24,21 @@ def run_stats(data):
         print("Running stats for single node")
         print("----------------------------------------------")
         node_stats, summary = run_group_stats(data)
+        node_stats.to_csv('node_stats.csv', index=False)
         # TODO Write stats data to csv
     else:
         # run stats for all
         print("Running stats for combined nodes")
         print("----------------------------------------------")
         combined_stats, summary_all = run_group_stats(data)
+        combined_stats.to_csv('node_stats.csv', index=False)
         print("Running stats for individual nodes")
         print("----------------------------------------------")
         single_node_stats, summary_ind = run_group_stats(data, group=['hostname','exp_command'])
+        single_node_stats.to_csv('single_node_stats.csv', index=False)
         print("Comparing individual node stats with combined")
         print("----------------------------------------------")
         #compare_single_nod(combined_stats, single_node_stats)
-        # TODO Write stats data to csv
 
 def run_group_stats(data, group=['exp_command']):
     fixed_data = data[data['random'] == 0]
@@ -54,45 +56,40 @@ def run_group_stats(data, group=['exp_command']):
     # Kruskal Wallis
     print("Running Kruskal Wallis")
     print("----------------------------------------------")
-    kruskal_wallace = kw_test(data,"result", group)
+    kruskal_wallace = KW_test(data,"result", group)
     kw_summary = summarize_kw_results(kruskal_wallace)
 
-    stats = shapiro_wilk_fixed.merge(shapiro_wilk_random, how='outer', on=group)
-    stats = stats.merge(kruskal_wallace, how='outer', on=group)
-    summary = pd.concat(shapiro_summery_fixed, shapiro_summary_random, kw_summary,
+    stats_all = shapiro_wilk_fixed.merge(shapiro_wilk_random, how='outer', on=group)
+    stats_all = stats_all.merge(kruskal_wallace, how='outer', on=group)
+    summary = pd.concat([shapiro_summary_fixed, shapiro_summary_random, kw_summary],
                         axis=1)
     # TODO: Add in confidence interval
-    return stats, summary
+    return stats_all, summary
 
 """##SHAPIRO WILK TEST"""
 def SW_test(df, measure, group, order):
   df_cols = group + ['S-W test statistic ' + order,
                      'S-W p-value ' + order]
   shapiro_wilk = pd.DataFrame(columns=df_cols)
-  shapiro_stats = pd.DataFrame(['S-W Number not normal ' + order,
-                                'S-W Number normal ' + order,
-                                'Fraction not normal ' + order])
+  shapiro_stats = pd.DataFrame(columns=['S-W Number not normal ' + order,
+                                        'S-W Number normal ' + order,
+                                        'Fraction not normal ' + order])
   for key, grp in df.groupby(group):
-      if len(columns) == 1:
+      if len(group) == 1:
           config = [key]
       else:
           config = list(key)
-      shapiro_wilk.loc[len(shapiro_wilk)] = group +
-                                            [stats.shapiro(grp[measure])[0],
-                                            stats.shapiro(grp[measure])[1],
-                                            order]
 
-  num_not_normal = len(shapiro_wilk[shapiro_wilk["S-W Test"]<0.05])
+      shapiro_wilk.loc[len(shapiro_wilk)] = config + \
+                                            [stats.shapiro(grp[measure])[0],
+                                            stats.shapiro(grp[measure])[1]]
+
+  num_not_normal = len(shapiro_wilk[shapiro_wilk["S-W p-value " + order]<0.05])
   num_normal = len(shapiro_wilk) - num_not_normal
   frac_not_normal = num_not_normal / len(shapiro_wilk)
   shapiro_stats.loc[len(shapiro_stats)] = [num_not_normal,
                                             num_normal,
                                             frac_not_normal]
-
-  normally_distributed = shapiro[shapiro["S-W p-value"]>0.05]
-
-  if len(normally_distributed) > 0:
-      print(normally_distributed)
   print("Number of configurations not normally distributed", num_not_normal)
   print("Number of configurations normally distributed", num_normal)
   print("Fraction of configurations not normally distributed", frac_not_normal)
@@ -127,7 +124,7 @@ def KW_test(df, measure, group):
     else:
         config = list(idx)
     # if (len(random_sample) >= sample_count_thresh) and (len(seq_sample) >= sample_count_thresh): #WHEN SUFFICIENT DATA IS PRESENT
-    kruskal_wallace.loc[len(df_effect)] = config +
+    kruskal_wallace.loc[len(kruskal_wallace)] = config + \
                                             [kw_stats[0],
                                             kw_stats[1],
                                             p_diff,
@@ -185,11 +182,11 @@ def summarize_kw_results(kw_data):
                                                 "random_90th"])
     performance_summary.loc[len(performance_summary)] = \
                             [len(pos),
-                            get_median(pos,"abs percent diff"),
+                            get_median(pos),
                             get_percentile(pos, .1),
                             get_percentile(pos, .9),
                             len(neg),
-                            get_median(neg,"abs percent diff"),
+                            get_median(neg),
                             get_percentile(neg, .1),
                             get_percentile(neg, .9)]
     print(performance_summary.to_string(index=False))
