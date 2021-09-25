@@ -63,14 +63,14 @@ def run_group_stats(data, group=['exp_command']):
     # CI testing
     print("Comparing Confidence Intervals")
     print("----------------------------------------------")
-    confidence_intervals = CI_fixed_vs_random(data, "result", group)
+    conf_intervals = CI_fixed_vs_random(data, "result", group)
 
 
     stats_all = shapiro_wilk_fixed.merge(shapiro_wilk_random, how='outer', on=group)
     stats_all = stats_all.merge(kruskal_wallace, how='outer', on=group)
+    stats_all = stats_all.merge(conf_intervals, how='outer', on=group)
     summary = pd.concat([shapiro_summary_fixed, shapiro_summary_random, kw_summary],
                         axis=1)
-    # TODO: Add in confidence interval
     return stats_all, summary
 
 """##SHAPIRO WILK TEST"""
@@ -115,27 +115,27 @@ def KW_test(df, measure, group):
 
     # Compare between fixed and random for each configuration
     for idx, grp in df.groupby(group):
-    fixed_results = grp[grp.random == 0][measure].values
-    fixed_results = fixed_results.astype(np.float64)
-    random_results= grp[grp.random == 1][measure].values
-    random_results = random_results.astype(np.float64)
+        fixed_results = grp[grp.random == 0][measure].values
+        fixed_results = fixed_results.astype(np.float64)
+        random_results= grp[grp.random == 1][measure].values
+        random_results = random_results.astype(np.float64)
 
-    # run test and compute results
-    kw_stats = stats.kruskal(fixed_results, random_results)
-    p_diff = percent_difference(fixed_results, random_results)
-    effect_size = effect_size_eta_squared_KW(fixed_results, random_results, kw_stats[0])
+        # run test and compute results
+        kw_stats = stats.kruskal(fixed_results, random_results)
+        p_diff = percent_difference(fixed_results, random_results)
+        effect_size = effect_size_eta_squared_KW(fixed_results, random_results, kw_stats[0])
 
-    # needed for use with group size of one or >1
-    if len(group) == 1:
-        config = [idx]
-    else:
-        config = list(idx)
-    # if (len(random_sample) >= sample_count_thresh) and (len(seq_sample) >= sample_count_thresh): #WHEN SUFFICIENT DATA IS PRESENT
-    kruskal_wallace.loc[len(kruskal_wallace)] = config + \
-                                            [kw_stats[0],
-                                            kw_stats[1],
-                                            p_diff,
-                                            effect_size]
+        # needed for use with group size of one or >1
+        if len(group) == 1:
+            config = [idx]
+        else:
+            config = list(idx)
+        # if (len(random_sample) >= sample_count_thresh) and (len(seq_sample) >= sample_count_thresh): #WHEN SUFFICIENT DATA IS PRESENT
+        kruskal_wallace.loc[len(kruskal_wallace)] = config + \
+                                                [kw_stats[0],
+                                                kw_stats[1],
+                                                p_diff,
+                                                effect_size]
 
     return kruskal_wallace
 
@@ -270,91 +270,6 @@ def get_ci(s,  alpha=0.95, p=0.5, n_thresh=10):
     q_ci_lo = s_sorted[lo_rank]
     q_ci_hi = s_sorted[hi_rank]
     return q, q_ci_lo, q_ci_hi
-
-
-def CI_cases(df):
-    fin_df = pd.DataFrame(columns=["hw_type", "testname", "dvfs", "socket_num","MT", "Case", "Inner_diff"])
-    for idx,grp in df.groupby(["hw_type", "testname", "dvfs", "socket_num","MT"]):
-        rand = grp[grp["random"] == 1]
-        seq = grp[grp["random"] == 0]
-        rand_pq = rand["pth_quantile"].values[0]
-        rand_high = rand["high"].values[0]
-        rand_low = rand["low"].values[0]
-        seq_pq = seq["pth_quantile"].values[0]
-        seq_high = seq["high"].values[0]
-        seq_low = seq["low"].values[0]
-
-        ##Calculating the differences
-        if(rand_high>seq_high):
-            ch = rand_low - seq_high
-        if(ch < 0): #Case 2 or Case 3
-            ch = None
-
-        else:
-            ch = seq_low - rand_high
-            if(ch < 0):
-                ch = None
-
-
-
-        #case 1 no overlap
-        if(rand_low > seq_high or seq_low> rand_high): # make this else
-            fin_df.loc[len(fin_df)] = list(idx) + ["Case 1", ch]
-
-        #case 2 and 3 checking for overlap
-        elif((seq_high >= rand_low and rand_high >= seq_high) or (rand_high >= seq_low and seq_high >= rand_high)):
-            #case 2 checking if medians overlap
-            if((rand_high>= seq_high and (seq_pq >= rand_low or rand_pq <= seq_high)) or (seq_high >= rand_high and (rand_pq >= seq_low or seq_pq <= rand_high))):
-                fin_df.loc[len(fin_df)] = list(idx) + ["Case 2", ch]
-            else: # case 3 no median overlap but overlap of CI present
-                fin_df.loc[len(fin_df)] = list(idx) + ["Case 3", ch]
-        else:
-            fin_df.loc[len(fin_df)] = list(idx) + ["Potential error", ch]
-
-  return fin_df
-
-"""##Function to plot CI"""
-
-# Plotting is similar to the code above
-def draw_plots(df):
-    fig, ax = plt.subplots(1, 1, figsize=(4, 3))
-    n_list = []
-    x_axis = []
-    for i in range(0,len(df)):
-
-        ax.errorbar(i, df["pth_quantile"].tolist()[i], yerr=[np.array([df["pth_quantile"].tolist()[i]-df["low"].tolist()[i]]),
-                  np.array([df["high"].tolist()[0]-df["pth_quantile"].tolist()[0]])], \
-                  c="orange", fmt='o')
-        x_axis.append(i)
-
-        if(((i)%2) != 0):
-            print(df["hw_type"].values[i], df["testname"].values[i],df["dvfs"].values[i], df["socket_num"].values[i],df["MT"].values[i])
-            plt.xticks(x_axis, ["fixed", "random"])
-            plt.show()
-            x_axis = []
-            if(i != len(df)-1):
-                fig, ax = plt.subplots(1, 1, figsize=(4, 3))
-
-"""##Function to plot the cases split histogram"""
-
-def CI_histo(data):
-    fig, (ax) = plt.subplots(1, 1, figsize=(6,4))
-    ax.bar(x = [1,3,5], height=data, tick_label= ["case1", "case2","case3"])
-    ax.set_title("Histogram of the split between the cases")
-    ax.set_xlabel("Case type")
-    ax.set_ylabel("Number of configuration of the case type")
-
-# cpu_ci_df = CI_seqvsran(cpu_with_random,"exec_time")
-# display(cpu_ci_df)
-#
-# cpu_ci = CI_cases(cpu_ci_df)
-#
-# cpu_ci["Case"].value_counts()
-#
-# draw_plots(cpu_ci_df.head(20)) # to get the plots for the different cases we simply need to try different rows of mem_ci_diff and plot them
-#
-# counts = list(cpu_ci["Case"].value_counts())
-# CI_histo(counts)
 
 def compare_single_node(combined_stats, single_stats):
     return None
