@@ -206,7 +206,9 @@ def CI_fixed_vs_random(data, measure, group, alpha = 0.95, p = 0.5):
                                       "fixed_ci_high",
                                       "random_pth_quantile",
                                       "random_ci_low",
-                                      "random_ci_high"])
+                                      "random_ci_high",
+                                      "ci_case",
+                                      "inner_diff"])
 
     for idx,grp in data.groupby(group):
         fixed_results = grp[grp.random == 0][measure].values
@@ -214,8 +216,8 @@ def CI_fixed_vs_random(data, measure, group, alpha = 0.95, p = 0.5):
         random_results= grp[grp.random == 1][measure].values
         random_results = random_results.astype(np.float64)
 
-        f_m,f_lo,f_hi = ci(fixed_results, alpha=alpha, p=p)
-        r_m,r_lo,r_hi = ci(random_results, alpha=alpha, p=p)
+        f_m,f_lo,f_hi = get_ci(fixed_results, alpha=alpha, p=p)
+        r_m,r_lo,r_hi = get_ci(random_results, alpha=alpha, p=p)
 
         # needed for use with group size of one or >1
         if len(group) == 1:
@@ -223,16 +225,41 @@ def CI_fixed_vs_random(data, measure, group, alpha = 0.95, p = 0.5):
         else:
             config = list(idx)
 
-        df.loc[len(df)] = config + [f_m,f_lo,f_hi,r_m,r_lo,r_hi]
+        # Check CI overlap cases
+        # Calculating the inner difference
+        if(r_hi>f_hi):
+            inner_diff = r_lo - f_hi
+            if inner_diff > 0:
+                case = 1
+            elif (f_m >= r_lo) or (r_m <= f_hi):
+                case = 2
+                inner_diff = None
+            else:
+                case = 3
+                inner_diff = None
+        else:
+            inner_diff = f_lo - r_hi
+            if inner_diff > 0:
+                case = 1
+            elif (r_m > f_lo) or (f_m < r_hi):
+                case = 2
+                inner_diff = None
+            else:
+                case = 3
+                inner_diff = None
+
+        df.loc[len(df)] = config + [f_m,f_lo,f_hi,r_m,r_lo,r_hi,case, inner_diff]
 
     return df
 
-def ci(s,  alpha=0.95, p=0.5, n_thresh=10):
+def get_ci(s,  alpha=0.95, p=0.5, n_thresh=10):
     """
     For values in the given array s and p in [0, 1], this fuction returns
     empirical p-quantile value and its nonparametric 95% confidence interval.
-    Refer to book by Boudec: https://infoscience.epfl.ch/record/146812/files/perfPublisherVersion_1.pdf,
-    (Page 36 describes how nonparametric confidence intervals can be obtained for p-quantiles)
+    Refer to book by Boudec:
+    https://infoscience.epfl.ch/record/146812/files/perfPublisherVersion_1.pdf,
+    (Page 36 describes how nonparametric confidence intervals can be obtained
+    for p-quantiles)
     """
     n = len(s)
     q = np.quantile(s, p)
@@ -270,19 +297,19 @@ def CI_cases(df):
 
 
 
-    #case 1 no overlap
-    if(rand_low > seq_high or seq_low> rand_high): # make this else
-        fin_df.loc[len(fin_df)] = list(idx) + ["Case 1", ch]
+        #case 1 no overlap
+        if(rand_low > seq_high or seq_low> rand_high): # make this else
+            fin_df.loc[len(fin_df)] = list(idx) + ["Case 1", ch]
 
-    #case 2 and 3 checking for overlap
-    elif((seq_high >= rand_low and rand_high >= seq_high) or (rand_high >= seq_low and seq_high >= rand_high)):
-        #case 2 checking if medians overlap
-        if((rand_high>= seq_high and (seq_pq >= rand_low or rand_pq <= seq_high)) or (seq_high >= rand_high and (rand_pq >= seq_low or seq_pq <= rand_high))):
-            fin_df.loc[len(fin_df)] = list(idx) + ["Case 2", ch]
-        else: # case 3 no median overlap but overlap of CI present
-            fin_df.loc[len(fin_df)] = list(idx) + ["Case 3", ch]
-    else:
-        fin_df.loc[len(fin_df)] = list(idx) + ["Potential error", ch]
+        #case 2 and 3 checking for overlap
+        elif((seq_high >= rand_low and rand_high >= seq_high) or (rand_high >= seq_low and seq_high >= rand_high)):
+            #case 2 checking if medians overlap
+            if((rand_high>= seq_high and (seq_pq >= rand_low or rand_pq <= seq_high)) or (seq_high >= rand_high and (rand_pq >= seq_low or seq_pq <= rand_high))):
+                fin_df.loc[len(fin_df)] = list(idx) + ["Case 2", ch]
+            else: # case 3 no median overlap but overlap of CI present
+                fin_df.loc[len(fin_df)] = list(idx) + ["Case 3", ch]
+        else:
+            fin_df.loc[len(fin_df)] = list(idx) + ["Potential error", ch]
 
   return fin_df
 
