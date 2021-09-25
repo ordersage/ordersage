@@ -4,3 +4,5 @@ __pycache__/
 *.log
 cloudlab_allocator
 notes.txt
+*.csv
+

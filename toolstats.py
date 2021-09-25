@@ -36,6 +36,7 @@ def run_stats(data):
         print("----------------------------------------------")
         single_node_stats, summary_ind = run_group_stats(data, group=['hostname','exp_command'])
         single_node_stats.to_csv('single_node_stats.csv', index=False)
+        summary_ind.to_csv('summary_stats.csv', index=False)
         print("Comparing individual node stats with combined")
         print("----------------------------------------------")
         #compare_single_nod(combined_stats, single_node_stats)
@@ -192,6 +193,116 @@ def summarize_kw_results(kw_data):
     print(performance_summary.to_string(index=False))
     return performance_summary
 
+def ci(s,  alpha=0.95, p=0.50, n_thresh=10):
+    """
+    For values in the given array s and p in [0, 1], this fuction returns
+    empirical p-quantile value and its nonparametric 95% confidence interval.
+    Refer to book by Boudec: https://infoscience.epfl.ch/record/146812/files/perfPublisherVersion_1.pdf,
+    (Page 36 describes how nonparametric confidence intervals can be obtained for p-quantiles)
+    """
+    n = len(s)
+    q = np.quantile(s, p)
+    eta = stats.norm.ppf((1+alpha)/2.0) # 1.96 for alpha = 0.95
+    lo_rank = max(int(np.floor(n * p - eta * np.sqrt(n * p * (1-p)))), 0)
+    hi_rank = min(int(np.ceil(n * p + eta * np.sqrt(n * p * (1-p))) + 1), n-1)
+    s_sorted = sorted(s.tolist())
+    q_ci_lo = s_sorted[lo_rank]
+    q_ci_hi = s_sorted[hi_rank]
+    return q, q_ci_lo, q_ci_hi
+
+"""##Function to calculate confidence of seq and random"""
+
+def CI_seqvsran(datf,measure,alpha = 0.95,p = 0.5):
+  df = pd.DataFrame(columns=["hw_type", "testname", "dvfs", "socket_num","MT","random","pth_quantile","low","high"])
+  for idx,grp in datf.groupby(["hw_type", "testname", "dvfs", "socket_num","MT","random"]):
+    m,lo,hi = ci(grp[measure].values, alpha=alpha, p=p)
+    df.loc[len(df)] = list(idx) + [m,lo,hi]
+
+  return df
+
+def CI_cases(df):
+  fin_df = pd.DataFrame(columns=["hw_type", "testname", "dvfs", "socket_num","MT", "Case", "Inner_diff"])
+  for idx,grp in df.groupby(["hw_type", "testname", "dvfs", "socket_num","MT"]):
+    rand = grp[grp["random"] == 1]
+    seq = grp[grp["random"] == 0]
+    rand_pq = rand["pth_quantile"].values[0]
+    rand_high = rand["high"].values[0]
+    rand_low = rand["low"].values[0]
+    seq_pq = seq["pth_quantile"].values[0]
+    seq_high = seq["high"].values[0]
+    seq_low = seq["low"].values[0]
+
+    ##Calculating the differences
+    if(rand_high>seq_high):
+      ch = rand_low - seq_high
+      if(ch < 0): #Case 2 or Case 3
+        ch = None
+
+    else:
+      ch = seq_low - rand_high
+      if(ch < 0):
+        ch = None
+
+
+
+    #case 1 no overlap
+    if(rand_low > seq_high or seq_low> rand_high): # make this else
+      fin_df.loc[len(fin_df)] = list(idx) + ["Case 1", ch]
+
+    #case 2 and 3 checking for overlap
+    elif((seq_high >= rand_low and rand_high >= seq_high) or (rand_high >= seq_low and seq_high >= rand_high)):
+      #case 2 checking if medians overlap
+      if((rand_high>= seq_high and (seq_pq >= rand_low or rand_pq <= seq_high)) or (seq_high >= rand_high and (rand_pq >= seq_low or seq_pq <= rand_high))):
+        fin_df.loc[len(fin_df)] = list(idx) + ["Case 2", ch]
+      else: # case 3 no median overlap but overlap of CI present
+        fin_df.loc[len(fin_df)] = list(idx) + ["Case 3", ch]
+    else:
+      fin_df.loc[len(fin_df)] = list(idx) + ["Potential error", ch]
+
+  return fin_df
+
+"""##Function to plot CI"""
+
+# Plotting is similar to the code above
+def draw_plots(df):
+  fig, ax = plt.subplots(1, 1, figsize=(4, 3))
+  n_list = []
+  x_axis = []
+  for i in range(0,len(df)):
+
+      ax.errorbar(i, df["pth_quantile"].tolist()[i], yerr=[np.array([df["pth_quantile"].tolist()[i]-df["low"].tolist()[i]]),
+                  np.array([df["high"].tolist()[0]-df["pth_quantile"].tolist()[0]])], \
+                  c="orange", fmt='o')
+      x_axis.append(i)
+
+      if(((i)%2) != 0):
+        print(df["hw_type"].values[i], df["testname"].values[i],df["dvfs"].values[i], df["socket_num"].values[i],df["MT"].values[i])
+        plt.xticks(x_axis, ["fixed", "random"])
+        plt.show()
+        x_axis = []
+        if(i != len(df)-1):
+          fig, ax = plt.subplots(1, 1, figsize=(4, 3))
+
+"""##Function to plot the cases split histogram"""
+
+def CI_histo(data):
+  fig, (ax) = plt.subplots(1, 1, figsize=(6,4))
+  ax.bar(x = [1,3,5], height=data, tick_label= ["case1", "case2","case3"])
+  ax.set_title("Histogram of the split between the cases")
+  ax.set_xlabel("Case type")
+  ax.set_ylabel("Number of configuration of the case type")
+
+# cpu_ci_df = CI_seqvsran(cpu_with_random,"exec_time")
+# display(cpu_ci_df)
+#
+# cpu_ci = CI_cases(cpu_ci_df)
+#
+# cpu_ci["Case"].value_counts()
+#
+# draw_plots(cpu_ci_df.head(20)) # to get the plots for the different cases we simply need to try different rows of mem_ci_diff and plot them
+#
+# counts = list(cpu_ci["Case"].value_counts())
+# CI_histo(counts)
 
 def compare_single_node(combined_stats, single_stats):
     return None
