@@ -39,7 +39,8 @@ def run_stats(data):
         summary_ind.to_csv('summary_stats.csv', index=False)
         print("Comparing individual node stats with combined")
         print("----------------------------------------------")
-        #compare_single_nod(combined_stats, single_node_stats)
+        compared_stats = compare_nodes(combined_stats, single_node_stats)
+        compared_stats.to_csv('compared_stats.csv', index=False)
 
 def run_group_stats(data, group=['exp_command']):
     fixed_data = data[data['random'] == 0]
@@ -64,7 +65,6 @@ def run_group_stats(data, group=['exp_command']):
     print("Comparing Confidence Intervals")
     print("----------------------------------------------")
     conf_intervals = CI_fixed_vs_random(data, "result", group)
-
 
     stats_all = shapiro_wilk_fixed.merge(shapiro_wilk_random, how='outer', on=group)
     stats_all = stats_all.merge(kruskal_wallace, how='outer', on=group)
@@ -130,7 +130,8 @@ def KW_test(df, measure, group):
             config = [idx]
         else:
             config = list(idx)
-        # if (len(random_sample) >= sample_count_thresh) and (len(seq_sample) >= sample_count_thresh): #WHEN SUFFICIENT DATA IS PRESENT
+        #WHEN SUFFICIENT DATA IS PRESENT
+        # if (len(random_sample) >= sample_count_thresh) and (len(seq_sample) >= sample_count_thresh):
         kruskal_wallace.loc[len(kruskal_wallace)] = config + \
                                                 [kw_stats[0],
                                                 kw_stats[1],
@@ -271,9 +272,22 @@ def get_ci(s,  alpha=0.95, p=0.5, n_thresh=10):
     q_ci_hi = s_sorted[hi_rank]
     return q, q_ci_lo, q_ci_hi
 
-def compare_single_node(combined_stats, single_stats):
-    return None
+def compare_nodes(combined_stats, single_stats):
+    compared_stats = combined_stats[['exp_command']].copy()
+    compared_stats['KW_dist_all'] = combined_stats['K-W p-value'].apply(get_distribution)
+    compared_stats['CI_case_all'] = combined_stats['ci_case']
 
+    # Run through each node and generate stats on distribution by experiment
+    for idx, group in single_stats.groupby(['hostname']):
+        ss = group[['exp_command']].copy()
+        ss['KW_dist_' + idx] = group['K-W p-value'].apply(get_distribution)
+        ss['CI_case_' + idx] = group['ci_case']
+        compared_stats = compared_stats.merge(ss, how='outer', on='exp_command')
+
+    return compared_stats
+
+def get_distribution(p_val):
+    return 'same' if p_val > 0.05 else 'different'
 
 def main():
     df = pd.read_csv('examples/test_data.csv')
