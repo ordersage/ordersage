@@ -6,17 +6,21 @@ import glob
 import statistics as stat
 import scipy.stats as stats
 
-#TODO:
-#       exclude runs that had a failure
-#       produce a report of statistical results
-#       configure CI testing (waiting on code from Nikhil)
-
-##############################################################################
 def process_data(data):
-    # keep for later use potentially
+    # Remove failures
+    fixed_failures = data[(data['completion_status'] == 'Failure') &\
+                         (data['order_type'] == 'fixed')]
+    # Drop all fixed runs with failed experiments
+    data = data[~(data['run_uuid'].isin(fixed_failures['run_uuid']))]
+    # Drop all experiments failed in random runs
+    data = data[~(data['completion_status'] == 'Failure')]
+    print(len(data))
+
     return data
 
 def run_stats(data):
+    # Process data, removing failures
+    data = process_data(data)
     # Record single or multinode and split data by order type
     n_nodes = len(data['hostname'].unique())
 
