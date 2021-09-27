@@ -297,9 +297,5 @@ def main():
     df = pd.read_csv('examples/test_data.csv')
     run_stats(df)
 
-
 if __name__ == "__main__":
     main()
-else:
-    print("Error, cannot enter main, exiting.")
-    sys.exit(2)

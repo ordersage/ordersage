@@ -29,7 +29,6 @@ from subprocess import Popen, PIPE, STDOUT, run
 # dataframe libraries and stats
 import pandas as pd
 import numpy as np
-import toolstats
 
 # uuid library
 import uuid
@@ -451,9 +450,9 @@ def run_single_node(worker, allocation, results_dir, exps, log=None):
     repo_dir = Path(config.repo).name
     repo_dir = repo_dir[:-len(".git")] if repo_dir.endswith(".git") else repo_dir
     # Run experiments, returns lists to add to dataframe
-    fixed_exp, fixed_run = run_remote_experiment(worker, allocation, "fixed", exp_dict, 10,
+    fixed_exp, fixed_run = run_remote_experiment(worker, allocation, "fixed", exp_dict, 1,
                                                  directory=repo_dir, log=log)
-    random_exp, random_run = run_remote_experiment(worker, allocation, "random", exp_dict, 10,
+    random_exp, random_run = run_remote_experiment(worker, allocation, "random", exp_dict, 1,
                                                    directory=repo_dir, log=log)
 
     # Create dataframe of individual experiments for csv
@@ -550,7 +549,8 @@ def main():
                 '*_env_out.csv', "_all_env_out.csv")
 
     # Run statistical analysis
-    run_stats(all_exps)
+    #df = pd.read_csv('examples/test_data.csv')
+    #run_stats(df)
 
     # Releasing allocated resources
     release_resources_wrapper(args, allocation)
