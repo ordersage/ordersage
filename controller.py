@@ -267,12 +267,6 @@ def initialize_remote_server(repo, worker, allocation, log=None):
                     exec_info=True)
         sys.exit(2)
 
-    # Remove old repo if present
-    repo_short = repo.split("/")[-1]
-    dir_name = repo_short[:-len(".git")] if repo_short.endswith(".git") else repo_short
-    log.info("Trying to remove old directory: " + dir_name + "...")
-    execute_remote_command(ssh, "rm -rf " + dir_name, log = log)
-
     # Clone experimets repo
     log.info("Cloning repo: " + repo + "...")
     execute_remote_command(ssh, "git clone " + repo, log = log)
@@ -439,7 +433,7 @@ def coordinate_initialization(allocation):
 #########################################################
 ###      Workflow for single-node experimentation      ###
 #########################################################
-def run_single_node(worker, allocation, results_dir, exps, log=None):
+def run_single_node(worker, allocation, results_dir, exps, timestamp, log=None):
     if log is None:
         log = LOG
     log.info("Beginning experimentation for " + worker)
@@ -449,6 +443,7 @@ def run_single_node(worker, allocation, results_dir, exps, log=None):
     # Extract name of dir where repo code whill be cloned (i.e. lowest-level dir in path)
     repo_dir = Path(config.repo).name
     repo_dir = repo_dir[:-len(".git")] if repo_dir.endswith(".git") else repo_dir
+
     # Run experiments, returns lists to add to dataframe
     fixed_exp, fixed_run = run_remote_experiment(worker, allocation, "fixed", exp_dict, 1,
                                                  directory=repo_dir, log=log)
@@ -493,18 +488,23 @@ def run_single_node(worker, allocation, results_dir, exps, log=None):
     exp_results_csv.to_csv(results_dir + "/" + worker + "_experiment_results.csv", index=False)
     run_results_csv.to_csv(results_dir + "/" + worker + "_run_results.csv", index=False)
 
+    # Move repo to new directory with timestamped name
+    ssh = open_ssh_connection(worker, allocation, log = log)
+    execute_remote_command(ssh, 'mv ' + repo_dir + ' ' + timestamp + '_' + repo_dir)
+    ssh.close()
+    
     log.info("Experiemnts successfully run on node (%s) and stored" % worker)
 
 ##################################################################
 ### Workflow for experimentation using multiple-nodes #############
 ##################################################################
-def run_multiple_nodes(allocation, results_dir, exps):
+def run_multiple_nodes(allocation, results_dir, exps, timestamp):
     threads = [None] * len(allocation.hostnames)
     for n, host in enumerate(allocation.hostnames):
         t_log = configure_logging("main.Thread." + str(n), debug=config.verbose, filename=host+".log")
         threads[n] = threading.Thread(target=run_single_node,
                                         args=(host, allocation,
-                                                results_dir, exps, t_log,))
+                                                results_dir, exps, timestamp, t_log,))
         threads[n].start()
 
     for t in threads:
@@ -535,9 +535,9 @@ def main():
 
     if len(allocation.hostnames) == 1:
         worker = allocation.hostnames[0]
-        run_single_node(worker, allocation, results_dir, exp_commands)
+        run_single_node(worker, allocation, results_dir, exp_commands, timestamp)
     elif len(allocation.hostnames) > 1:
-        run_multiple_nodes(allocation, results_dir, exp_commands)
+        run_multiple_nodes(allocation, results_dir, exp_commands, timestamp)
     else:
         LOG.error("Something went wrong. No nodes allocated")
     # Save all results to single file
