@@ -76,6 +76,7 @@ def run_group_stats(data, group=['exp_command']):
     stats_all = stats_all.merge(conf_intervals, how='outer', on=group)
     summary = pd.concat([shapiro_summary_fixed, shapiro_summary_random, kw_summary],
                         axis=1)
+    stats_all = stats_all.sort_values(by=['coeff_of_variation'], ascending=False)
     return stats_all, summary
 
 """##SHAPIRO WILK TEST"""
@@ -113,7 +114,8 @@ def KW_test(df, measure, group):
     # Samples with fewer than this number of values will not be considered
     sample_count_thresh = 50
     kruskal_wallace = pd.DataFrame(columns = group + \
-                                            ['K-W_test_stat',
+                                            ['coeff_of_variation',
+                                            'K-W_test_stat',
                                             'K-W_p-value',
                                             'percent_diff',
                                             'K-W_effect_size'])
@@ -126,6 +128,7 @@ def KW_test(df, measure, group):
         random_results = random_results.astype(np.float64)
 
         # run test and compute results
+        coef_of_var = stats.variation(grp[measure].values)
         kw_stats = stats.kruskal(fixed_results, random_results)
         p_diff = percent_difference(fixed_results, random_results)
         effect_size = effect_size_eta_squared_KW(fixed_results, random_results, kw_stats[0])
@@ -138,7 +141,8 @@ def KW_test(df, measure, group):
         #WHEN SUFFICIENT DATA IS PRESENT
         # if (len(random_sample) >= sample_count_thresh) and (len(seq_sample) >= sample_count_thresh):
         kruskal_wallace.loc[len(kruskal_wallace)] = config + \
-                                                [kw_stats[0],
+                                                [coef_of_var,
+                                                kw_stats[0],
                                                 kw_stats[1],
                                                 p_diff,
                                                 effect_size]
