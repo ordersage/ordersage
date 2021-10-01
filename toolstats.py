@@ -5,6 +5,7 @@ import pandas as pd
 import glob
 import statistics as stat
 import scipy.stats as stats
+import itertools
 
 def process_data(data):
     # Remove failures
@@ -280,13 +281,20 @@ def compare_nodes(combined_stats, single_stats):
     compared_stats = combined_stats[['exp_command']].copy()
     compared_stats['KW_dist_all'] = combined_stats['K-W p-value'].apply(get_distribution)
     compared_stats['CI_case_all'] = combined_stats['ci_case']
-
+    dist_overview = []
     # Run through each node and generate stats on distribution by experiment
     for idx, group in single_stats.groupby(['hostname']):
         ss = group[['exp_command']].copy()
         ss['KW_dist_' + idx] = group['K-W p-value'].apply(get_distribution)
         ss['CI_case_' + idx] = group['ci_case']
         compared_stats = compared_stats.merge(ss, how='outer', on='exp_command')
+        overview = compared_stats['KW_dist_' + idx].tolist()
+        overview = list(map((lambda x: x[0]), overview))
+        dist_overview.append(overview)
+
+    # Transpose overview list and add as column
+    dist_overview = list(map(list, itertools.zip_longest(*dist_overview, fillvalue=None)))
+    compared_stats.insert(loc=3, column='KW_dist_overview', value=dist_overview)
 
     return compared_stats
 
