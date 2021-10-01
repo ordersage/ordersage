@@ -48,8 +48,8 @@ def run_stats(data):
         compared_stats.to_csv('compared_stats.csv', index=False)
 
 def run_group_stats(data, group=['exp_command']):
-    fixed_data = data[data['random'] == 0]
-    random_data = data[data['random'] == 1]
+    fixed_data = data[data['order_type'] == 'fixed']
+    random_data = data[data['order_type'] == 'random']
 
     # Shapiro-Wilk to test for normality
     print("Running Shapiro-Wilk on fixed data")
@@ -80,12 +80,12 @@ def run_group_stats(data, group=['exp_command']):
 
 """##SHAPIRO WILK TEST"""
 def SW_test(df, measure, group, order):
-    df_cols = group + ['S-W test statistic ' + order,
-                     'S-W p-value ' + order]
+    df_cols = group + ['S-W_test_stat_' + order,
+                     'S-W_p-value_' + order]
     shapiro_wilk = pd.DataFrame(columns=df_cols)
-    shapiro_stats = pd.DataFrame(columns=['S-W Number not normal ' + order,
-                                        'S-W Number normal ' + order,
-                                        'Fraction not normal ' + order])
+    shapiro_stats = pd.DataFrame(columns=['S-W_num_not_normal_' + order,
+                                        'S-W_number_normal_' + order,
+                                        'Fraction_not_normal_' + order])
     for key, grp in df.groupby(group):
         if len(group) == 1:
             config = [key]
@@ -96,7 +96,7 @@ def SW_test(df, measure, group, order):
                                             [stats.shapiro(grp[measure])[0],
                                             stats.shapiro(grp[measure])[1]]
 
-    num_not_normal = len(shapiro_wilk[shapiro_wilk["S-W p-value " + order]<0.05])
+    num_not_normal = len(shapiro_wilk[shapiro_wilk["S-W_p-value_" + order]<0.05])
     num_normal = len(shapiro_wilk) - num_not_normal
     frac_not_normal = num_not_normal / len(shapiro_wilk)
     shapiro_stats.loc[len(shapiro_stats)] = [num_not_normal,
@@ -113,16 +113,16 @@ def KW_test(df, measure, group):
     # Samples with fewer than this number of values will not be considered
     sample_count_thresh = 50
     kruskal_wallace = pd.DataFrame(columns = group + \
-                                            ['K-W test statistic',
-                                            'K-W p-value',
-                                            'percent diff',
-                                            'K-W effect size'])
+                                            ['K-W_test_stat',
+                                            'K-W_p-value',
+                                            'percent_diff',
+                                            'K-W_effect_size'])
 
     # Compare between fixed and random for each configuration
     for idx, grp in df.groupby(group):
-        fixed_results = grp[grp.random == 0][measure].values
+        fixed_results = grp[grp.order_type == 'fixed'][measure].values
         fixed_results = fixed_results.astype(np.float64)
-        random_results= grp[grp.random == 1][measure].values
+        random_results= grp[grp.order_type == 'random'][measure].values
         random_results = random_results.astype(np.float64)
 
         # run test and compute results
@@ -173,17 +173,17 @@ def get_percentile(df, quant):
 
 def summarize_kw_results(kw_data):
     # calculating average percentage difference
-    kw_data['abs percent diff'] = kw_data['percent diff'].apply(abs)
-    avg_pd = sum(kw_data["abs percent diff"].values) / len(kw_data)
+    kw_data['abs_percent_diff'] = kw_data['percent_diff'].apply(abs)
+    avg_pd = sum(kw_data["abs_percent_diff"].values) / len(kw_data)
     print("Average percent difference: %f\n\n" % avg_pd)
 
     # Looking at whether the random or the fixed order performed better
     print("Random vs. Fixed Order Performance")
     print("----------------------------------------------")
-    pos = kw_data[(kw_data['percent diff'] > 0) &
-                    (kw_data['K-W p-value'] < 0.05)]['abs percent diff']
-    neg = kw_data[(kw_data['percent diff'] < 0) &
-                    (kw_data['K-W p-value'] < 0.05)]['abs percent diff']
+    pos = kw_data[(kw_data['percent_diff'] > 0) &
+                    (kw_data['K-W_p-value'] < 0.05)]['abs_percent_diff']
+    neg = kw_data[(kw_data['percent_diff'] < 0) &
+                    (kw_data['K-W_p-value'] < 0.05)]['abs_percent_diff']
     # add 10th percentile
     performance_summary = pd.DataFrame(columns=["fixed_greater_count",
                                                 "fixed_Median",
@@ -217,9 +217,9 @@ def CI_fixed_vs_random(data, measure, group, alpha = 0.95, p = 0.5):
                                       "inner_diff"])
 
     for idx,grp in data.groupby(group):
-        fixed_results = grp[grp.random == 0][measure].values
+        fixed_results = grp[grp.order_type == 'fixed'][measure].values
         fixed_results = fixed_results.astype(np.float64)
-        random_results= grp[grp.random == 1][measure].values
+        random_results= grp[grp.order_type == 'random'][measure].values
         random_results = random_results.astype(np.float64)
 
         f_m,f_lo,f_hi = get_ci(fixed_results, alpha=alpha, p=p)
@@ -279,13 +279,14 @@ def get_ci(s,  alpha=0.95, p=0.5, n_thresh=10):
 
 def compare_nodes(combined_stats, single_stats):
     compared_stats = combined_stats[['exp_command']].copy()
-    compared_stats['KW_dist_all'] = combined_stats['K-W p-value'].apply(get_distribution)
+    compared_stats['KW_dist_all'] = combined_stats['K-W_p-value'].apply(get_distribution)
     compared_stats['CI_case_all'] = combined_stats['ci_case']
     dist_overview = []
+
     # Run through each node and generate stats on distribution by experiment
     for idx, group in single_stats.groupby(['hostname']):
         ss = group[['exp_command']].copy()
-        ss['KW_dist_' + idx] = group['K-W p-value'].apply(get_distribution)
+        ss['KW_dist_' + idx] = group['K-W_p-value'].apply(get_distribution)
         ss['CI_case_' + idx] = group['ci_case']
         compared_stats = compared_stats.merge(ss, how='outer', on='exp_command')
         overview = compared_stats['KW_dist_' + idx].tolist()
