@@ -82,7 +82,8 @@ def run_group_stats(data, group=['exp_command']):
 """##SHAPIRO WILK TEST"""
 def SW_test(df, measure, group, order):
     df_cols = group + ['S-W_test_stat_' + order,
-                     'S-W_p-value_' + order]
+                     'S-W_p-value_' + order,
+                     'Normal_' + order]
     shapiro_wilk = pd.DataFrame(columns=df_cols)
     shapiro_stats = pd.DataFrame(columns=['S-W_num_not_normal_' + order,
                                         'S-W_number_normal_' + order,
@@ -92,10 +93,12 @@ def SW_test(df, measure, group, order):
             config = [key]
         else:
             config = list(key)
-
+        sw = stats.shapiro(grp[measure])
+        normal = True if sw[1] > 0.05 else False
         shapiro_wilk.loc[len(shapiro_wilk)] = config + \
-                                            [stats.shapiro(grp[measure])[0],
-                                            stats.shapiro(grp[measure])[1]]
+                                            [sw[0],
+                                            sw[1],
+                                            normal]
 
     num_not_normal = len(shapiro_wilk[shapiro_wilk["S-W_p-value_" + order]<0.05])
     num_normal = len(shapiro_wilk) - num_not_normal
