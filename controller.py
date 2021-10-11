@@ -234,8 +234,7 @@ def reboot(ssh_client, worker, log=None):
     try:
         execute_remote_command(ssh_client, "sudo reboot")
     except:
-        log.critical('Failure to reboot...')
-        raise ConnectionError()
+        log.info('Exception on sudo reboot... assuming reboot in progress')
 
     # Spin until the e comes up and is ready for SSH
     log.info("Awaiting completion of reboot for "
