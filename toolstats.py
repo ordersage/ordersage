@@ -3,6 +3,7 @@ import numpy as np
 import datetime as dt
 import pandas as pd
 import glob
+import datetime
 import statistics as stat
 import scipy.stats as stats
 import itertools
@@ -22,7 +23,7 @@ def process_data(data):
 
     return data
 
-def run_stats(data):
+def run_stats(data, results_dir, timestamp):
     # Process data, removing failures
     data = process_data(data)
     # Record single or multinode and split data by order type
@@ -32,23 +33,23 @@ def run_stats(data):
         LOG.info("Running stats for single node")
         LOG.info("----------------------------------------------")
         node_stats, summary = run_group_stats(data)
-        node_stats.to_csv('node_stats.csv', index=False)
-        # TODO Write stats data to csv
+        node_stats.to_csv(results_dir + '/node_stats.csv', index=False)
+        summary.to_csv(results_dir + '/node_summary.csv', index=False)
     else:
         # run stats for all
         LOG.info("Running stats for combined nodes")
         LOG.info("----------------------------------------------")
         combined_stats, summary_all = run_group_stats(data)
-        combined_stats.to_csv('node_stats.csv', index=False)
+        combined_stats.to_csv(results_dir + 'node_stats.csv', index=False)
         LOG.info("Running stats for individual nodes")
         LOG.info("----------------------------------------------")
         single_node_stats, summary_ind = run_group_stats(data, group=['hostname','exp_command'])
-        single_node_stats.to_csv('single_node_stats.csv', index=False)
-        summary_ind.to_csv('summary_stats.csv', index=False)
+        single_node_stats.to_csv(results_dir + '/single_node_stats.csv', index=False)
+        summary_ind.to_csv(results_dir + '/summary_stats.csv', index=False)
         LOG.info("Comparing individual node stats with combined")
         LOG.info("----------------------------------------------")
         compared_stats = compare_nodes(combined_stats, single_node_stats)
-        compared_stats.to_csv('compared_stats.csv', index=False)
+        compared_stats.to_csv(results_dir + '/compared_stats.csv', index=False)
 
 def run_group_stats(data, group=['exp_command']):
     fixed_data = data[data['order_type'] == 'fixed']
@@ -313,7 +314,8 @@ def get_distribution(p_val):
 
 def main():
     df = pd.read_csv('examples/test_data.csv')
-    run_stats(df)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H:%M:%S")
+    run_stats(df, 'examples', timestamp)
 
 if __name__ == "__main__":
     main()

@@ -633,7 +633,7 @@ def main():
 
     # Run statistical analysis
     df = pd.read_csv('examples/test_data.csv')
-    run_stats(df)
+    run_stats(df, results_dir, timestamp)
 
     # Releasing allocated resources
     release_resources_wrapper(args, allocation)
