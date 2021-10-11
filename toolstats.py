@@ -85,7 +85,7 @@ def run_group_stats(data, group=['exp_command']):
     idx = len(group)
     # Shift high level stats to front
     stats_all.insert(idx, 'coeff_of_variation', stats_all.pop('coeff_of_variation'))
-    stats_all.insert(idx+1, 'K-W_dist_type', stats_all.pop('K-W_dist_type'))
+    stats_all.insert(idx+1, 'KW_dist_type', stats_all.pop('KW_dist_type'))
     stats_all.insert(idx+2, 'Normal_fixed', stats_all.pop('Normal_fixed'))
     stats_all.insert(idx+3, 'Normal_random', stats_all.pop('Normal_random'))
 
@@ -93,12 +93,12 @@ def run_group_stats(data, group=['exp_command']):
 
 """##SHAPIRO WILK TEST"""
 def SW_test(df, measure, group, order):
-    df_cols = group + ['S-W_test_stat_' + order,
-                     'S-W_p-value_' + order,
+    df_cols = group + ['SW_test_stat_' + order,
+                     'SW_p-value_' + order,
                      'Normal_' + order]
     shapiro_wilk = pd.DataFrame(columns=df_cols)
-    shapiro_stats = pd.DataFrame(columns=['S-W_num_not_normal_' + order,
-                                        'S-W_number_normal_' + order,
+    shapiro_stats = pd.DataFrame(columns=['SW_num_not_normal_' + order,
+                                        'SW_number_normal_' + order,
                                         'Fraction_not_normal_' + order])
     for key, grp in df.groupby(group):
         if len(group) == 1:
@@ -112,7 +112,7 @@ def SW_test(df, measure, group, order):
                                             sw[1],
                                             normal]
 
-    num_not_normal = len(shapiro_wilk[shapiro_wilk["S-W_p-value_" + order]<0.05])
+    num_not_normal = len(shapiro_wilk[shapiro_wilk["SW_p-value_" + order]<0.05])
     num_normal = len(shapiro_wilk) - num_not_normal
     frac_not_normal = num_not_normal / len(shapiro_wilk)
     shapiro_stats.loc[len(shapiro_stats)] = [num_not_normal,
@@ -128,12 +128,12 @@ def KW_test(df, measure, group):
     # Samples with fewer than this number of values will not be considered
     sample_count_thresh = 50
     kruskal_wallace = pd.DataFrame(columns = group + \
-                                            ['K-W_dist_type',
+                                            ['KW_dist_type',
                                             'coeff_of_variation',
-                                            'K-W_test_stat',
-                                            'K-W_p-value',
+                                            'KW_test_stat',
+                                            'KW_p-value',
                                             'percent_diff',
-                                            'K-W_effect_size'])
+                                            'KW_effect_size'])
 
     # Compare between fixed and random for each configuration
     for idx, grp in df.groupby(group):
@@ -204,9 +204,9 @@ def summarize_kw_results(kw_data):
     LOG.info("Random vs. Fixed Order Performance")
     LOG.info("----------------------------------------------")
     pos = kw_data[(kw_data['percent_diff'] > 0) &
-                    (kw_data['K-W_p-value'] < 0.05)]['abs_percent_diff']
+                    (kw_data['KW_p-value'] < 0.05)]['abs_percent_diff']
     neg = kw_data[(kw_data['percent_diff'] < 0) &
-                    (kw_data['K-W_p-value'] < 0.05)]['abs_percent_diff']
+                    (kw_data['KW_p-value'] < 0.05)]['abs_percent_diff']
     # add 10th percentile
     performance_summary = pd.DataFrame(columns=["fixed_greater_count",
                                                 "fixed_Median",
@@ -303,14 +303,14 @@ def get_ci(s,  alpha=0.95, p=0.5, n_thresh=10):
 def compare_nodes(combined_stats, single_stats):
     compared_stats = combined_stats[['exp_command']].copy()
     compared_stats['COV_all'] = combined_stats['coeff_of_variation']
-    compared_stats['KW_dist_type_all'] = combined_stats['K-W_dist_type']
+    compared_stats['KW_dist_type_all'] = combined_stats['KW_dist_type']
     compared_stats['CI_case_all'] = combined_stats['ci_case']
     dist_overview = []
 
     # Run through each node and generate stats on distribution by experiment
     for idx, group in single_stats.groupby(['hostname']):
         ss = group[['exp_command']].copy()
-        ss['KW_dist_type_' + idx] = group['K-W_dist_type']
+        ss['KW_dist_type_' + idx] = group['KW_dist_type']
         ss['CI_case_' + idx] = group['ci_case']
         ss['COV_' + idx] = group['coeff_of_variation']
         compared_stats = compared_stats.merge(ss, how='outer', on='exp_command')
