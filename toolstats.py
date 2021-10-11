@@ -6,6 +6,10 @@ import glob
 import statistics as stat
 import scipy.stats as stats
 import itertools
+from logger import configure_logging
+
+LOG = configure_logging(name="toolstats", filter = True, debug = True, \
+                        to_console = True, filename = "mainlogfile.log")
 
 def process_data(data):
     # Remove failures
@@ -15,7 +19,6 @@ def process_data(data):
     data = data[~(data['run_uuid'].isin(fixed_failures['run_uuid']))]
     # Drop all experiments failed in random runs
     data = data[~(data['completion_status'] == 'Failure')]
-    print(len(data))
 
     return data
 
@@ -26,24 +29,24 @@ def run_stats(data):
     n_nodes = len(data['hostname'].unique())
 
     if n_nodes == 1:
-        print("Running stats for single node")
-        print("----------------------------------------------")
+        LOG.info("Running stats for single node")
+        LOG.info("----------------------------------------------")
         node_stats, summary = run_group_stats(data)
         node_stats.to_csv('node_stats.csv', index=False)
         # TODO Write stats data to csv
     else:
         # run stats for all
-        print("Running stats for combined nodes")
-        print("----------------------------------------------")
+        LOG.info("Running stats for combined nodes")
+        LOG.info("----------------------------------------------")
         combined_stats, summary_all = run_group_stats(data)
         combined_stats.to_csv('node_stats.csv', index=False)
-        print("Running stats for individual nodes")
-        print("----------------------------------------------")
+        LOG.info("Running stats for individual nodes")
+        LOG.info("----------------------------------------------")
         single_node_stats, summary_ind = run_group_stats(data, group=['hostname','exp_command'])
         single_node_stats.to_csv('single_node_stats.csv', index=False)
         summary_ind.to_csv('summary_stats.csv', index=False)
-        print("Comparing individual node stats with combined")
-        print("----------------------------------------------")
+        LOG.info("Comparing individual node stats with combined")
+        LOG.info("----------------------------------------------")
         compared_stats = compare_nodes(combined_stats, single_node_stats)
         compared_stats.to_csv('compared_stats.csv', index=False)
 
@@ -52,23 +55,23 @@ def run_group_stats(data, group=['exp_command']):
     random_data = data[data['order_type'] == 'random']
 
     # Shapiro-Wilk to test for normality
-    print("Running Shapiro-Wilk on fixed data")
-    print("----------------------------------------------")
+    LOG.info("Running Shapiro-Wilk on fixed data")
+    LOG.info("----------------------------------------------")
     shapiro_wilk_fixed, shapiro_summary_fixed = SW_test(fixed_data,"result",group,"fixed")
 
-    print("Running Shapiro-Wilk on random data")
-    print("----------------------------------------------")
+    LOG.info("Running Shapiro-Wilk on random data")
+    LOG.info("----------------------------------------------")
     shapiro_wilk_random, shapiro_summary_random = SW_test(random_data,"result",group, "random")
 
     # Kruskal Wallis
-    print("Running Kruskal Wallis")
-    print("----------------------------------------------")
+    LOG.info("Running Kruskal Wallis")
+    LOG.info("----------------------------------------------")
     kruskal_wallace = KW_test(data,"result", group)
     kw_summary = summarize_kw_results(kruskal_wallace)
 
     # CI testing
-    print("Comparing Confidence Intervals")
-    print("----------------------------------------------")
+    LOG.info("Comparing Confidence Intervals")
+    LOG.info("----------------------------------------------")
     conf_intervals = CI_fixed_vs_random(data, "result", group)
 
     stats_all = shapiro_wilk_fixed.merge(shapiro_wilk_random, how='outer', on=group)
@@ -106,10 +109,9 @@ def SW_test(df, measure, group, order):
     shapiro_stats.loc[len(shapiro_stats)] = [num_not_normal,
                                             num_normal,
                                             frac_not_normal]
-    print("Number of configurations not normally distributed", num_not_normal)
-    print("Number of configurations normally distributed", num_normal)
-    print("Fraction of configurations not normally distributed", frac_not_normal)
-    print("\n\n")
+    LOG.info("Number of configurations not normally distributed " + str(num_not_normal))
+    LOG.info("Number of configurations normally distributed " + str(num_normal))
+    LOG.info("Fraction of configurations not normally distributed " + str(frac_not_normal))
 
     return shapiro_wilk, shapiro_stats
 
@@ -182,11 +184,11 @@ def summarize_kw_results(kw_data):
     # calculating average percentage difference
     kw_data['abs_percent_diff'] = kw_data['percent_diff'].apply(abs)
     avg_pd = sum(kw_data["abs_percent_diff"].values) / len(kw_data)
-    print("Average percent difference: %f\n\n" % avg_pd)
+    LOG.info("Average percent difference: " + str(avg_pd))
 
     # Looking at whether the random or the fixed order performed better
-    print("Random vs. Fixed Order Performance")
-    print("----------------------------------------------")
+    LOG.info("Random vs. Fixed Order Performance")
+    LOG.info("----------------------------------------------")
     pos = kw_data[(kw_data['percent_diff'] > 0) &
                     (kw_data['K-W_p-value'] < 0.05)]['abs_percent_diff']
     neg = kw_data[(kw_data['percent_diff'] < 0) &
@@ -209,7 +211,7 @@ def summarize_kw_results(kw_data):
                             get_median(neg),
                             get_percentile(neg, .1),
                             get_percentile(neg, .9)]
-    print(performance_summary.to_string(index=False))
+    LOG.info(performance_summary.to_string(index=False))
     return performance_summary
 
 
