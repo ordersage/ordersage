@@ -11,7 +11,8 @@ import glob
 # Time libraries and RNG
 import time
 from time import sleep
-from datetime import datetime
+import datetime
+from timeit import default_timer as timer
 import random
 
 # SSH libraries
@@ -29,6 +30,7 @@ from subprocess import Popen, PIPE, STDOUT, run
 # dataframe libraries and stats
 import pandas as pd
 import numpy as np
+from statistics import mean
 
 # uuid library
 import uuid
@@ -121,7 +123,7 @@ def open_ssh_connection(worker, allocation, log=None, port_num=22, timeout = 5,m
 ### Execute command on worker node ###
 ######################################
 def execute_remote_command(ssh_client, cmd, max_tries=5, timeout=10,
-                            print_to_console=False, log=None):
+                            print_to_console=False, log=None, test = False):
     """ Executes command on worker node via pre-established SSHClient.
     Captures stdout continuously as command runs and blocks until remote command
     finishes execution and exit status is received. If verbose option is on, stdout
@@ -241,7 +243,6 @@ def reboot(ssh_client, worker, log=None):
                 + ", sleeping for 2 minutes...")
     sleep(120)
 
-    #TODO: Fix error handling here and logging
     while True:
         try:
             out = run(["nc", "-z", "-v", "-w5", worker, "22"],
@@ -292,7 +293,6 @@ def initialize_remote_server(repo, worker, allocation, log=None):
 
     try:
         # Clone experimets repo
-        execute_remote_command(ssh, "echo hi", log = log)
         log.info("Cloning repo: " + repo + "...")
         execute_remote_command(ssh, "git clone " + repo, log = log)
 
@@ -311,7 +311,7 @@ def initialize_remote_server(repo, worker, allocation, log=None):
                                     log = log)
         execute_remote_command(ssh, "cd " + config.results_dir + " && mv env_out.csv "
                                     + worker + "_env_out.csv", log = log)
-    except Exception:
+    except:
         log.critical('Failed to run initialization script for ' + worker +
                         '. Exiting...')
         raise
@@ -324,63 +324,6 @@ def initialize_remote_server(repo, worker, allocation, log=None):
         raise
 
     ssh.close()
-
-#################################################################
-### Run remote experiments on worker node and record metadata ###
-#################################################################
-def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory,log=None):
-    """ Runs experiments on worker node in either a fixed, arbitrary order or
-    a random order. Runs will be executed 'n_runs' times, and results will be saved
-    on the worker end. Upon completion, each run and its metadata will be stored.
-    """
-    exp_data = []
-    run_data = []
-    exps = list(exp_dict.keys())
-    if log is None:
-        log = LOG
-    # Set seed
-    rand_seed = config.seed if config.seed else time.time()
-    random.seed(rand_seed)
-
-    # Begin exp loop n times
-    for x in range(n_runs):
-        id = uuid.uuid1()
-        ssh = open_ssh_connection(worker, allocation, log)
-
-        log.info("Running " + order + " loop " + str(x + 1) + " of " + str(n_runs))
-        if order == "random":
-            random.shuffle(exps)
-
-        run_start = time.process_time()
-        # Run each command provided by user
-        for i, exp in enumerate(exps):
-            # Get experiment command from dictionary
-            cmd = exp_dict.get(exp)
-            log.info("Running " + cmd + "...")
-            start = time.process_time()
-            try:
-                execute_remote_command(ssh, "cd %s && %s" % (directory, cmd), log = log)
-            except:
-                result = "Failure"
-            else:
-                result = "Success"
-            stop = time.process_time()
-            # Save experiment with completion status and metadata
-            exp_result = [id, worker, x, n_runs, cmd, exp, i, order, start, stop, result]
-            exp_data.append(exp_result)
-        # Collect run information
-        run_stop = time.process_time()
-        run_results = [id, worker, x, n_runs, order, rand_seed, run_start, run_stop]
-        run_data.append(run_results)
-        try:
-            reboot(ssh, worker)
-        except:
-            log.warning('Worker ' + worker + 'failed to reboot after run ' +\
-                        x + ' of ' + n_runs + '. Ending ' + order + ' run early.')
-            break
-
-        ssh.close()
-    return exp_data,run_data
 
 ######################
 ### Access wrapper ###
@@ -490,6 +433,74 @@ def coordinate_initialization(allocation):
     ssh.close()
     return exps
 
+#################################################################
+### Run remote experiments on worker node and record metadata ###
+#################################################################
+def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory,log=None):
+    """ Runs experiments on worker node in either a fixed, arbitrary order or
+    a random order. Runs will be executed 'n_runs' times, and results will be saved
+    on the worker end. Upon completion, each run and its metadata will be stored.
+    """
+    exp_data = []
+    run_data = []
+    run_times = []
+    est_remaing_time = 0
+    # add random runs to fixed calculation
+    order_add = n_runs if order == 'fixed' else 0
+    exps = list(exp_dict.keys())
+    if log is None:
+        log = LOG
+    # Set seed
+    rand_seed = config.seed if config.seed else time.time()
+    random.seed(rand_seed)
+
+    # Begin exp loop n times
+    for x in range(n_runs):
+        id = uuid.uuid1()
+        ssh = open_ssh_connection(worker, allocation, log)
+
+        log.info("Running " + order + " loop " + str(x + 1) + " of " + str(n_runs))
+        if x > 0:
+            est_time_remaining = mean(run_times) * (n_runs + order_add - x)
+            est_time_remaining = str(datetime.timedelta(seconds=est_time_remaining))
+            log.info("ESTIMATED TIME REMAINING: " + est_time_remaining)
+        if order == "random":
+            random.shuffle(exps)
+
+        run_start = timer()
+        # Run each command provided by user
+        for i, exp in enumerate(exps):
+            # Get experiment command from dictionary
+            cmd = exp_dict.get(exp)
+            log.info("Running " + cmd + "...")
+            start = time.process_time()
+            try:
+                execute_remote_command(ssh, "cd %s && %s" % (directory, cmd), log = log)
+            except KeyboardInterrupt:
+                sys.exit(2)
+            except:
+                result = "Failure"
+            else:
+                result = "Success"
+            stop = time.process_time()
+            # Save experiment with completion status and metadata
+            exp_result = [id, worker, x, n_runs, cmd, exp, i, order, start, stop, result]
+            exp_data.append(exp_result)
+        # Collect run information
+        run_stop = timer()
+        run_times.append(run_stop - run_start)
+        run_results = [id, worker, x, n_runs, order, rand_seed, run_start, run_stop]
+        run_data.append(run_results)
+        try:
+            reboot(ssh, worker)
+        except:
+            log.warning('Worker ' + worker + 'failed to reboot after run ' +\
+                        x + ' of ' + n_runs + '. Ending ' + order + ' run early.')
+            break
+
+        ssh.close()
+    return exp_data,run_data
+
 #########################################################
 ###      Workflow for single-node experimentation      ###
 #########################################################
@@ -506,21 +517,21 @@ def run_single_node(worker, allocation, results_dir, exps, timestamp, log=None):
     repo_dir = repo_dir[:-len(".git")] if repo_dir.endswith(".git") else repo_dir
 
     # Run experiments, returns lists to add to dataframe
-    fixed_exp, fixed_run = run_remote_experiment(worker, allocation, "fixed", exp_dict, 1,
+    fixed_exp, fixed_run = run_remote_experiment(worker, allocation, "fixed", exp_dict, 4,
                                                  directory=repo_dir, log=log)
-    random_exp, random_run = run_remote_experiment(worker, allocation, "random", exp_dict, 1,
+    random_exp, random_run = run_remote_experiment(worker, allocation, "random", exp_dict, 4,
                                                    directory=repo_dir, log=log)
 
     # Create dataframe of individual experiments for csv
     exp_results_csv = pd.DataFrame(fixed_exp + random_exp,
-                                columns=("run_uuid", "hostname", "run_num", "total_runs",
-                                        "exp_command", "exp_number", "order_number",
-                                        "order_type", "time_start", "time_stop",
-                                        "completion_status"))
+                                    columns=("run_uuid", "hostname", "run_num", "total_runs",
+                                            "exp_command", "exp_number", "order_number",
+                                            "order_type", "time_start", "time_stop",
+                                            "completion_status"))
     run_results_csv = pd.DataFrame(fixed_run + random_run,
-                                columns=("run_uuid", "hostname", "run_num", "total_runs",
-                                        "order_type", "random_seed", "time_start",
-                                        "time_stop"))
+                                    columns=("run_uuid", "hostname", "run_num", "total_runs",
+                                            "order_type", "random_seed", "time_start",
+                                            "time_stop"))
 
     # Add machine type to results file
     ssh = open_ssh_connection(worker, allocation, log = log)
@@ -598,7 +609,7 @@ def main():
 
     # Set up results directory with timestamp
     LOG.info("Setting up local results directory")
-    timestamp = datetime.now().strftime("%Y%m%d_%H:%M:%S")
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H:%M:%S")
     results_dir = timestamp + "_results"
     execute_local_command(["mkdir", results_dir])
 
