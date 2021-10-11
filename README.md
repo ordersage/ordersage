@@ -8,7 +8,7 @@ This repo contains the code for running benchmarks in fixed/randomized orders on
 
 Users must fill out or update `config.py` prior to usage of the controller script. Configuration must include the SSH information for the worker node (unless Cloudlab resources will be used), the repository that will contain the experiments, the paths to the specified files and directories, and optional debugging and random seed information.
 
-Additionally, `config.py` must contain commands to run an initialization script (see `Initialization`) and a script that prints all experiments commands that will be used to stdout.
+Additionally, `config.py` must contain commands to run an initialization script (see `Initialization`) and a script that prints all experiment commands to stdout.
 
 #### 2. Get all dependencies (set up environment)
 
@@ -35,14 +35,14 @@ Always make sure that you run this `activate` command *before* running `controll
 
 #### 3. Set up experiment repository
 
-Inside `config.py`, update `repo` option to make it point at the specific public repo with experiments that need to be run.
+Inside `config.py`, update the `repo` option to your public repo containing experiments that need to be run.
 
-Examples of such repo can be seen at: [https://gitlab.flux.utah.edu/carina/test-experiments](https://gitlab.flux.utah.edu/carina/test-experiments)
+Examples of such repo can be seen at: [https://gitlab.flux.utah.edu/carina/os-experiments](https://gitlab.flux.utah.edu/carina/os-experiments)
 and [https://gitlab.flux.utah.edu/Duplyakin/test-experiments](https://gitlab.flux.utah.edu/Duplyakin/test-experiments)
 
 ##### Initialization
 
-Experiment repositories should contain a script `initialization.sh` that sets up the worker node(s) to ready them for experimentation. Our controller script will run the script before experimentation and reboot to achieve a clean state. Initialization must include the creation of a results directory whose location is recorded in `config.py`.
+Experiment repositories must contain a script `initialization.sh` that readies the worker node(s) for experimentation. Our `controller.py` script will run the `initialization.sh` before experimentation and reboot to achieve a clean state. Initialization must include the creation of a results directory whose location is recorded in `config.py`.
 
 ##### Experiment Configuration File
 
@@ -101,7 +101,7 @@ you should see a line at the beginning of the produced log messages like this:
 
 ## During experimentation
 
-Experiments will be executed in a fixed, arbitrary order (known as a run). A run will be repeated a number of times specified by the user in `config.py`. The remote worker(s) will be rebooted after each run to ensure a clean machine state. The experiments will then be randomized using a user-provided seed or epoch time seed as a default and run. Re-randomization and execution of the experiments will occur a number of times specified by the user in `config.py`. Worker node(s) will be rebooted for a clean state between each run.
+Experiments will be executed in a fixed, arbitrary order (known as a run). A run will be repeated a number of times specified by setting `n_runs` in `config.py`. The remote worker(s) will be rebooted after each run to ensure a clean machine state. The experiments will then be randomized using a user-provided seed or epoch time seed as a default and run. Re-randomization and execution of the experiments will occur a number of times specified by `n_runs`. Worker node(s) will be rebooted for a clean state between each run.
 
 **Debugging:** All debug information will be saved to a log file. In `config.py`, `verbose=True` will direct STDOUT to be printed to the terminal as DEBUG information. Any errors during execution and information statements will be both saved to the log file and printed to the terminal.
 
@@ -111,19 +111,22 @@ Results will be saved to a timestamped folder in the `sigmetrics-tool` repositor
 
 ##### Result Requirements
 
-In order to automate the collection of results and statistical analysis of experiment order, the user must meet some requirements when gathering results in the code implemented as part of the experiment repository:
+In order to automate the collection of results and statistical analysis of experiment order, the user must meet the following requirements when gathering results in the code implemented as part of the experiment repository:
 
 1. Results from each experiment must be collected and stored in a text file (file name specified in `config.py` as `results_file`) as a single column of floating-point numbers written in the order the experiments were called by the controller script.
 2. Result text file and machine spec information will moved to a results directory and transferred to the controller node together. The results directory path must be specified by the user in `config.py` as `results_dir`.
-3. All failed experiments must return a non-zero exit code, and also a value of the user's choice in the results text file.
+3. All failed experiments must return a non-zero exit code, and also a value of the user's choice in the results text file (i.e even a failed experiment must produce a result to the results text file).
 
 ## Statistical Analysis
 
-Results from runs can be analyzed via `toolstats.py`. All data must be grouped by node type (TODO in controller.py).
+Results from runs will be analyzed via `toolstats.py`. Here, it is assumed that all nodes are of the same hardware type. Analysis will occur for both single node executions and multinode and contain the following statistical tests:
 
-Results will be returned as follows:
 1. Shapiro Wilk: separates normally distributed data from not normally distributed data
 2. Kruskall Wallace: reports whether experiment order has a statistically significant impact on performance
-3. Percent Difference: difference between means of fixed vs random order
-4. Effect Size: Magnitude of difference
-5. Graphs?
+3. Percent Difference: difference between means of fixed-arbitrary vs random order
+4. Effect Size: magnitude of percent difference
+5. Confidence Interval Comparisons: categorizes CI of two tests as: 
+    - overlapping with mean of one contained in CI of another
+    - overlapping with means of both outside CIs of other
+    - non-overlapping with reported difference between
+6. Indiviual Node vs. Grouped Node Comparisons: compares stats 1-5 in individual nodes to those with results aggregated from all nodes
