@@ -33,23 +33,24 @@ def run_stats(data, results_dir, timestamp):
         LOG.info("Running stats for single node")
         LOG.info("----------------------------------------------")
         node_stats, summary = run_group_stats(data)
-        node_stats.to_csv(results_dir + '/node_stats.csv', index=False)
-        summary.to_csv(results_dir + '/node_summary.csv', index=False)
+        node_stats.to_csv(results_dir + '/' + timestamp + '_node_stats.csv', index=False)
+        summary.to_csv(results_dir + '/' + timestamp + '_stats_summary.csv', index=False)
     else:
         # run stats for all
         LOG.info("Running stats for combined nodes")
         LOG.info("----------------------------------------------")
         combined_stats, summary_all = run_group_stats(data)
-        combined_stats.to_csv(results_dir + 'node_stats.csv', index=False)
+        combined_stats.to_csv(results_dir + '/' + timestamp + '_combined_node_stats.csv', index=False)
+        combined_stats.to_csv(results_dir + '/' + timestamp + '_combined_stats_summary.csv', index=False)
         LOG.info("Running stats for individual nodes")
         LOG.info("----------------------------------------------")
         single_node_stats, summary_ind = run_group_stats(data, group=['hostname','exp_command'])
-        single_node_stats.to_csv(results_dir + '/single_node_stats.csv', index=False)
-        summary_ind.to_csv(results_dir + '/summary_stats.csv', index=False)
+        single_node_stats.to_csv(results_dir + '/' + timestamp + '_indv_node_stats.csv', index=False)
+        summary_ind.to_csv(results_dir + '/' + timestamp + '_indv_stats_summary.csv', index=False)
         LOG.info("Comparing individual node stats with combined")
         LOG.info("----------------------------------------------")
         compared_stats = compare_nodes(combined_stats, single_node_stats)
-        compared_stats.to_csv(results_dir + '/compared_stats.csv', index=False)
+        compared_stats.to_csv(results_dir + '/' + timestamp + 'compared_stats.csv', index=False)
 
 def run_group_stats(data, group=['exp_command']):
     fixed_data = data[data['order_type'] == 'fixed']
@@ -81,6 +82,13 @@ def run_group_stats(data, group=['exp_command']):
     summary = pd.concat([shapiro_summary_fixed, shapiro_summary_random, kw_summary],
                         axis=1)
     stats_all = stats_all.sort_values(by=['coeff_of_variation'], ascending=False)
+    idx = len(group)
+    # Shift high level stats to front
+    stats_all.insert(idx, 'coeff_of_variation', stats_all.pop('coeff_of_variation'))
+    stats_all.insert(idx+1, 'K-W_dist_type', stats_all.pop('K-W_dist_type'))
+    stats_all.insert(idx+2, 'Normal_fixed', stats_all.pop('Normal_fixed'))
+    stats_all.insert(idx+3, 'Normal_random', stats_all.pop('Normal_random'))
+
     return stats_all, summary
 
 """##SHAPIRO WILK TEST"""
@@ -120,7 +128,8 @@ def KW_test(df, measure, group):
     # Samples with fewer than this number of values will not be considered
     sample_count_thresh = 50
     kruskal_wallace = pd.DataFrame(columns = group + \
-                                            ['coeff_of_variation',
+                                            ['K-W_dist_type',
+                                            'coeff_of_variation',
                                             'K-W_test_stat',
                                             'K-W_p-value',
                                             'percent_diff',
@@ -134,11 +143,11 @@ def KW_test(df, measure, group):
         random_results = random_results.astype(np.float64)
 
         # run test and compute results
-        coef_of_var = stats.variation(grp[measure].values)
+        coef_of_var = round(stats.variation(grp[measure].values), 3)
         kw_stats = stats.kruskal(fixed_results, random_results)
         p_diff = percent_difference(fixed_results, random_results)
         effect_size = effect_size_eta_squared_KW(fixed_results, random_results, kw_stats[0])
-
+        kw_dist = get_distribution(kw_stats[1])
         # needed for use with group size of one or >1
         if len(group) == 1:
             config = [idx]
@@ -147,13 +156,17 @@ def KW_test(df, measure, group):
         #WHEN SUFFICIENT DATA IS PRESENT
         # if (len(random_sample) >= sample_count_thresh) and (len(seq_sample) >= sample_count_thresh):
         kruskal_wallace.loc[len(kruskal_wallace)] = config + \
-                                                [coef_of_var,
+                                                [kw_dist,
+                                                coef_of_var,
                                                 kw_stats[0],
                                                 kw_stats[1],
                                                 p_diff,
                                                 effect_size]
 
     return kruskal_wallace
+
+def get_distribution(p_val):
+    return 'same' if p_val > 0.05 else 'different'
 
 def percent_difference(v_control, v_experiment):
     # The paper reports this as fixed-random/fixed * 100
@@ -289,28 +302,30 @@ def get_ci(s,  alpha=0.95, p=0.5, n_thresh=10):
 
 def compare_nodes(combined_stats, single_stats):
     compared_stats = combined_stats[['exp_command']].copy()
-    compared_stats['KW_dist_all'] = combined_stats['K-W_p-value'].apply(get_distribution)
+    compared_stats['COV_all'] = combined_stats['coeff_of_variation']
+    compared_stats['KW_dist_type_all'] = combined_stats['K-W_dist_type']
     compared_stats['CI_case_all'] = combined_stats['ci_case']
     dist_overview = []
 
     # Run through each node and generate stats on distribution by experiment
     for idx, group in single_stats.groupby(['hostname']):
         ss = group[['exp_command']].copy()
-        ss['KW_dist_' + idx] = group['K-W_p-value'].apply(get_distribution)
+        ss['KW_dist_type_' + idx] = group['K-W_dist_type']
         ss['CI_case_' + idx] = group['ci_case']
+        ss['COV_' + idx] = group['coeff_of_variation']
         compared_stats = compared_stats.merge(ss, how='outer', on='exp_command')
-        overview = compared_stats['KW_dist_' + idx].tolist()
+        overview = compared_stats['KW_dist_type_' + idx].tolist()
         overview = list(map((lambda x: x[0]), overview))
         dist_overview.append(overview)
 
     # Transpose overview list and add as column
     dist_overview = list(map(list, itertools.zip_longest(*dist_overview, fillvalue=None)))
-    compared_stats.insert(loc=3, column='KW_dist_overview', value=dist_overview)
-
+    compared_stats.insert(loc=4, column='KW_dist_overview', value=dist_overview)
+    compared_stats['KW_dist_overview'] = compared_stats['KW_dist_overview'].apply(convert_list)
     return compared_stats
 
-def get_distribution(p_val):
-    return 'same' if p_val > 0.05 else 'different'
+def convert_list(l):
+    return '-'.join(l)
 
 def main():
     df = pd.read_csv('examples/test_data.csv')
