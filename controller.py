@@ -265,7 +265,7 @@ def reboot(ssh_client, worker, log=None):
                                 + " out of " + str(max_tries) + ")...")
                     sleep(60)
 
-    LOG.info("Node " + worker + " is up at " + str(datetime.today()))
+    LOG.info("Node " + worker + " is up at " + str(datetime.date.today()))
 
 ##############################
 ### Initialize worker node ###
