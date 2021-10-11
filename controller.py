@@ -44,6 +44,19 @@ from toolstats import run_stats
 # Config file parsing
 from configparser import ConfigParser
 
+class ThreadWithReturn(threading.Thread):
+    def run(self):
+        self.exec = None
+        try:
+            super().run()
+        except BaseException as e:
+            self.exec = e
+
+    def join(self):
+        threading.Thread.join(self)
+        if self.exec:
+            raise self.exec
+
 # See debug info from paramiko
 logging.getLogger("paramiko").setLevel(logging.DEBUG)
 LOG = configure_logging(name="main", filter = True, debug = config.verbose, \
@@ -71,7 +84,7 @@ def parse_args():
 ################################
 ### Establish SSH Connection ###
 ################################
-def open_ssh_connection(worker, allocation, log=None, port_num=22, timeout=10, max_tries=10):
+def open_ssh_connection(worker, allocation, log=None, port_num=22, timeout = 5,max_tries=10):
     """ Attemps to establish an SSH connection to the specified worker node.
     If successful, returns an SSHClient with open connection to the worker.
     """
@@ -88,14 +101,16 @@ def open_ssh_connection(worker, allocation, log=None, port_num=22, timeout=10, m
         try:
             ssh.connect(hostname = worker, port = port_num,
                         username = allocation.user,
-                        key_filename = allocation.public_key, timeout = timeout)
+                        key_filename = allocation.public_key,
+                        timeout = timeout)
         except Exception as e:
             n_tries += 1
             log.error("In open_ssh_connection: " + repr(e) + " - " + str(e))
             log.info("Error #" + str(n_tries) + " of " + str(max_tries) + ".")
             if n_tries >= max_tries:
                 log.error("Failure to connect to " + worker)
-                raise ConnectionError()
+                log.error(e)
+                raise
             else:
                 log.info("Retrying...")
         else:
@@ -105,7 +120,7 @@ def open_ssh_connection(worker, allocation, log=None, port_num=22, timeout=10, m
 ######################################
 ### Execute command on worker node ###
 ######################################
-def execute_remote_command(ssh_client, cmd, max_tries=1, timeout=10,
+def execute_remote_command(ssh_client, cmd, max_tries=5, timeout=10,
                             print_to_console=False, log=None):
     """ Executes command on worker node via pre-established SSHClient.
     Captures stdout continuously as command runs and blocks until remote command
@@ -143,22 +158,22 @@ def execute_remote_command(ssh_client, cmd, max_tries=1, timeout=10,
             log.error("SSH exception while executing '" + cmd + "'. Attempt "
                         + str(n_tries) + " of " + str(max_tries))
             if n_tries >= max_tries:
-                log.critical("Failed to execute " + cmd, exc_info = True)
-                return "Failure"
+                log.error("Connection error. Failed to execute " + cmd, exc_info = True)
+                log.error(e)
+                raise
             else:
                 log.info("Retrying...")
                 sleep(timeout)
         else:
             # Blocks until command finishes execution
             exit_status = channel.recv_exit_status()
-            # Here is where errors on the remote side are handled
-            # Retry here as well?
+            # Handles errors on remote side
             if exit_status != 0:
                 log.error("Error executing command: '" + cmd
                             + "'. Exit status: " + str(exit_status))
-                return "Failure"
+                raise
             channel.close()
-            return "Success"
+            return
 
 ###############################
 ### Execute command locally ###
@@ -199,50 +214,58 @@ def execute_local_command(cmd, function_name="execute_local_command", max_tries=
 ##########################
 ### Reboot worker node ###
 ##########################
-def reboot(ssh_client, worker):
+def reboot(ssh_client, worker, log=None):
     """ Reboots worker node then checks periodically if it is back up. If
     config.reboot is False, it will skip this command (for debugging only)
     """
     n_tries = 0
     max_tries = 8
+    if log is None:
+        log = LOG
 
     # Skip reboot
     if(config.reboot == False):
         return "Success"
 
     LOG.info("Rebooting...")
-    execute_remote_command(ssh_client, "sudo reboot")
+
+    try:
+        execute_remote_command(ssh_client, "sudo reboot")
+    except:
+        log.critical('Failure to reboot...')
+        raise ConnectionError()
 
     # Spin until the e comes up and is ready for SSH
-    LOG.info("Awaiting completion of reboot for "
+    log.info("Awaiting completion of reboot for "
                 + worker
                 + ", sleeping for 2 minutes...")
     sleep(120)
 
+    #TODO: Fix error handling here and logging
     while True:
         try:
             out = run(["nc", "-z", "-v", "-w5", worker, "22"],
                     stderr=STDOUT,
                     stdout=PIPE)
         except Exception as ex:
-            print("In reboot: " + repr(ex) + " - " + str(ex))
+            log.critical(ex)
+            raise
         else:
             if out.returncode == 0:
                 break
             else:
                 n_tries += 1
                 if n_tries >= max_tries:
-                    LOG.critical("Failed to reconnect to " + worker)
-                    return "Failure"
+                    log.critical("Failed to reconnect to " + worker)
+                    raise
                 else:
-                    LOG.error("Connection attempt to "
+                    log.error("Connection attempt to "
                                 + worker
                                 + " timed out, retrying (" + str(n_tries)
                                 + " out of " + str(max_tries) + ")...")
                     sleep(60)
 
     LOG.info("Node " + worker + " is up at " + str(datetime.today()))
-    return "Success"
 
 ##############################
 ### Initialize worker node ###
@@ -263,32 +286,42 @@ def initialize_remote_server(repo, worker, allocation, log=None):
     try:
         ssh = open_ssh_connection(worker, allocation, log = log)
     except:
-        log.critical("Failure to connect to " + worker,
-                    exec_info=True)
-        sys.exit(2)
+        log.critical('Faiure to connect on initialization of ' + worker +
+                        '. Exiting...')
+        raise
 
-    # Clone experimets repo
-    log.info("Cloning repo: " + repo + "...")
-    execute_remote_command(ssh, "git clone " + repo, log = log)
+    try:
+        # Clone experimets repo
+        execute_remote_command(ssh, "echo hi", log = log)
+        log.info("Cloning repo: " + repo + "...")
+        execute_remote_command(ssh, "git clone " + repo, log = log)
 
-    # Run initialization script. Results directory will be created here
-    log.info("Running initialization script...")
-    execute_remote_command(ssh, config.init_script_call, log = log)
+        # Run initialization script. Results directory will be created here
+        log.info("Running initialization script...")
+        execute_remote_command(ssh, config.init_script_call, log = log)
 
-    # Gather e specs
-    log.info("Transferring env_info.sh to " + worker)
-    cmd = ["scp",
-            "-o", "StrictHostKeyChecking=no",
-            "env_info.sh",
-            config.user + "@" + worker + ":" + config.results_dir]
-    execute_local_command(cmd, "initialize_remote_server", log = log)
-    execute_remote_command(ssh, "cd " + config.results_dir + " && ./env_info.sh", log = log)
-    # Rename to add hostname
-    execute_remote_command(ssh, "cd " + config.results_dir + " && mv env_out.csv "
-                                + worker + "_env_out.csv", log = log)
+        # Gather e specs
+        log.info("Transferring env_info.sh to " + worker)
+        cmd = ["scp",
+                "-o", "StrictHostKeyChecking=no",
+                "env_info.sh",
+                config.user + "@" + worker + ":" + config.results_dir]
+        execute_local_command(cmd, "initialize_remote_server", log = log)
+        execute_remote_command(ssh, "cd " + config.results_dir + " && ./env_info.sh",
+                                    log = log)
+        execute_remote_command(ssh, "cd " + config.results_dir + " && mv env_out.csv "
+                                    + worker + "_env_out.csv", log = log)
+    except Exception:
+        log.critical('Failed to run initialization script for ' + worker +
+                        '. Exiting...')
+        raise
 
     # Reboot to clean state
-    reboot(ssh, worker)
+    try:
+        reboot(ssh, worker)
+    except:
+        log.critical(worker + " failed to reboot...exiting.")
+        raise
 
     ssh.close()
 
@@ -325,7 +358,12 @@ def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory
             cmd = exp_dict.get(exp)
             log.info("Running " + cmd + "...")
             start = time.process_time()
-            result = execute_remote_command(ssh, "cd %s && %s" % (directory, cmd), log = log)
+            try:
+                execute_remote_command(ssh, "cd %s && %s" % (directory, cmd), log = log)
+            except:
+                result = "Failure"
+            else:
+                result = "Success"
             stop = time.process_time()
             # Save experiment with completion status and metadata
             exp_result = [id, worker, x, n_runs, cmd, exp, i, order, start, stop, result]
@@ -334,8 +372,13 @@ def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory
         run_stop = time.process_time()
         run_results = [id, worker, x, n_runs, order, rand_seed, run_start, run_stop]
         run_data.append(run_results)
+        try:
+            reboot(ssh, worker)
+        except:
+            log.warning('Worker ' + worker + 'failed to reboot after run ' +\
+                        x + ' of ' + n_runs + '. Ending ' + order + ' run early.')
+            break
 
-        reboot(ssh, worker)
         ssh.close()
     return exp_data,run_data
 
@@ -400,21 +443,34 @@ def release_cloudlab(args, allocation):
 #####################################################
 def coordinate_initialization(allocation):
     if(len(allocation.hostnames) == 1):
-        initialize_remote_server(config.repo, allocation.hostnames[0], allocation)
+        try:
+            initialize_remote_server(config.repo, allocation.hostnames[0], allocation)
+        except:
+            sys.exit(2)
     elif len(allocation.hostnames) > 1:
         # Initialize worker nodes
         threads = [None] * len(allocation.hostnames)
         for n, host in enumerate(allocation.hostnames):
             t_log = configure_logging("main.Thread." + str(n), debug=config.verbose, filename=host+".log")
-            threads[n] = threading.Thread(target=initialize_remote_server,
-                                            args=(config.repo, host, allocation, t_log))
+            threads[n] = ThreadWithReturn(target = initialize_remote_server,
+                                          args = (config.repo, host, allocation, t_log,),
+                                          name = host)
             threads[n].start()
 
         for t in threads:
-            t.join()
+            try:
+                t.join()
+            except:
+                # Remove if error was caught
+                allocation.hostnames.remove(t.name)
     else:
         LOG.error("Something went wrong. No nodes allocated")
         raise ValueError()
+
+    # If all nodes failed, exit
+    if len(allocation.hostnames) == 0:
+        LOG.critical('All nodes failed to initialize. Exiting...')
+        sys.exit(2)
 
     # Pick first allocation to retrieve experiment command list
     ssh = open_ssh_connection(allocation.hostnames[0], allocation)
@@ -422,8 +478,12 @@ def coordinate_initialization(allocation):
     LOG.info("Retrieving experiment commands from " + allocation.hostnames[0] + "...")
     f = io.StringIO()
     with redirect_stdout(f):
-        execute_remote_command(ssh, config.experiment_script_call,
-                                print_to_console=True)
+        try:
+            execute_remote_command(ssh, config.experiment_script_call,
+                                    print_to_console=True)
+        except:
+            LOG.critical('Failed to retrieve experiment commands...exiting.')
+            sys.exit(2)
     exps = f.getvalue()
     exps = exps.splitlines()
     exps = list(filter(None, exps))
@@ -437,6 +497,7 @@ def run_single_node(worker, allocation, results_dir, exps, timestamp, log=None):
     if log is None:
         log = LOG
     log.info("Beginning experimentation for " + worker)
+
     # Assign number to each experiment and store in dictionary
     exp_dict = {i : exps[i] for i in range(0, len(exps))}
 
@@ -464,9 +525,13 @@ def run_single_node(worker, allocation, results_dir, exps, timestamp, log=None):
     # Add machine type to results file
     ssh = open_ssh_connection(worker, allocation, log = log)
     results_with_hostname = worker + "_" + config.results_file
-    execute_remote_command(ssh, "cd " + config.results_dir + " && "
-                            + "mv " + config.results_file + " "
-                            + results_with_hostname)
+    try:
+        execute_remote_command(ssh, "cd " + config.results_dir + " && "
+                                + "mv " + config.results_file + " "
+                                + results_with_hostname)
+    except:
+        log.warning('Failed to rename results file from ' + config.results_file +\
+                    ' to ' + results_with_hostname)
     ssh.close()
 
     # scp everything in results directory from worker and rename with timestamp
@@ -490,21 +555,28 @@ def run_single_node(worker, allocation, results_dir, exps, timestamp, log=None):
 
     # Move repo to new directory with timestamped name
     ssh = open_ssh_connection(worker, allocation, log = log)
-    execute_remote_command(ssh, 'mv ' + repo_dir + ' ' + timestamp + '_' + repo_dir)
+    try:
+        execute_remote_command(ssh, 'mv ' + repo_dir + ' ' + timestamp + '_' + repo_dir)
+    except:
+        log.warning('Experiments repo on ' + worker + ' unsuccessfully moved to ' +\
+                    repo_dir + ' ' + timestamp + '_' + repo_dir +
+                    '. Please delete or change before re-running controller.py')
     ssh.close()
-    
-    log.info("Experiemnts successfully run on node (%s) and stored" % worker)
+
+    log.info("Experiemnts completed on node (%s) and stored" % worker)
 
 ##################################################################
 ### Workflow for experimentation using multiple-nodes #############
 ##################################################################
 def run_multiple_nodes(allocation, results_dir, exps, timestamp):
     threads = [None] * len(allocation.hostnames)
+
     for n, host in enumerate(allocation.hostnames):
         t_log = configure_logging("main.Thread." + str(n), debug=config.verbose, filename=host+".log")
-        threads[n] = threading.Thread(target=run_single_node,
-                                        args=(host, allocation,
-                                                results_dir, exps, timestamp, t_log,))
+        threads[n] = ThreadWithReturn(target=run_single_node,
+                                      args=(host, allocation,
+                                            results_dir, exps, timestamp, t_log,),
+                                            name=host)
         threads[n].start()
 
     for t in threads:
