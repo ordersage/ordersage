@@ -1,5 +1,5 @@
 # # SSH Configurations
-# workers = ["ms0745.utah.cloudlab.us"]
+# workers = ["hp065.utah.cloudlab.us"]
 # user = "carina"
 # keyfile = "/home/carina/.ssh/id_cloud"
 # port_num = 22
@@ -16,7 +16,7 @@
 # # Options
 # n_runs = 1
 # verbose = True
-# reboot = False
+# reboot = True
 # seed = None
 
 # SSH Configurations
@@ -36,6 +36,7 @@ results_dir = "~/test-experiments/results"
 results_file = "results.txt"
 
 # Options
+n_runs = 2
 verbose = True
-reboot = False
+reboot = True
 seed = None

@@ -2,6 +2,11 @@
 
 This repo contains the code for running benchmarks in fixed/randomized orders on specified remote resources.
 
+To clone: 
+```
+git clone https://gitlab.flux.utah.edu/carina/sigmetrics-tool.git
+```
+
 ## To Start
 
 #### 1. Update `config.py`
@@ -16,8 +21,15 @@ Users must have a working Python environment with such packages as `paramiko`, `
 
 If you don't have `conda` on the machine where you are running this code, do the following (it will install `miniconda`; it doesn't require root priviledges):
 
+For **OSX**, run:
 ```
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O ~/miniconda.sh
+bash ~/miniconda.sh -b -p $HOME/miniconda
+```
+
+Alternatively, for **Linux**, run:
+```
+wget https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh -O ~/miniconda.sh
 bash ~/miniconda.sh -b -p $HOME/miniconda
 ```
 
@@ -26,7 +38,8 @@ After this, you might need to run: `~/miniconda/bin/conda init` (unless the inst
 When you have `conda` installed and initialized, create a new environment using the file provided in this repo:
 
 ```
-conda create -f environment.yml
+cd sigmetrics-tool
+conda env create -f environment.yml
 ```
 
 To initialize the environment, do: `conda activate sigmetrics-tool`

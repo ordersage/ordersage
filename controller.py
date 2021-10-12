@@ -86,7 +86,7 @@ def parse_args():
 ################################
 ### Establish SSH Connection ###
 ################################
-def open_ssh_connection(worker, allocation, log=None, port_num=22, timeout = 5,max_tries=10):
+def open_ssh_connection(worker, allocation, log=None, port_num=22, timeout = 25,max_tries=10):
     """ Attemps to establish an SSH connection to the specified worker node.
     If successful, returns an SSHClient with open connection to the worker.
     """
@@ -115,6 +115,7 @@ def open_ssh_connection(worker, allocation, log=None, port_num=22, timeout = 5,m
                 raise
             else:
                 log.info("Retrying...")
+                sleep(timeout)
         else:
             log.info("SSH connection to " + worker + " successful.")
             return ssh
@@ -462,7 +463,7 @@ def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory
         if x > 0:
             est_time_remaining = mean(run_times) * (n_runs + order_add - x)
             est_time_remaining = str(datetime.timedelta(seconds=est_time_remaining))
-            log.info("ESTIMATED TIME REMAINING: " + est_time_remaining)
+            log.info('\033[1m' + 'ESTIMATED TIME REMAINING: ' + est_time_remaining + '\033[0m')
         if order == "random":
             random.shuffle(exps)
 
@@ -490,12 +491,13 @@ def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory
         run_times.append(run_stop - run_start)
         run_results = [id, worker, x, n_runs, order, rand_seed, run_start, run_stop]
         run_data.append(run_results)
-        try:
-            reboot(ssh, worker)
-        except:
-            log.warning('Worker ' + worker + 'failed to reboot after run ' +\
-                        x + ' of ' + n_runs + '. Ending ' + order + ' run early.')
-            break
+        if x != (n_runs - 1) and order != 'random':
+            try:
+                reboot(ssh, worker)
+            except:
+                log.warning('Worker ' + worker + 'failed to reboot after run ' +\
+                            x + ' of ' + n_runs + '. Ending ' + order + ' run early.')
+                break
 
         ssh.close()
     return exp_data,run_data
@@ -516,9 +518,9 @@ def run_single_node(worker, allocation, results_dir, exps, timestamp, log=None):
     repo_dir = repo_dir[:-len(".git")] if repo_dir.endswith(".git") else repo_dir
 
     # Run experiments, returns lists to add to dataframe
-    fixed_exp, fixed_run = run_remote_experiment(worker, allocation, "fixed", exp_dict, 4,
+    fixed_exp, fixed_run = run_remote_experiment(worker, allocation, "fixed", exp_dict, config.n_runs,
                                                  directory=repo_dir, log=log)
-    random_exp, random_run = run_remote_experiment(worker, allocation, "random", exp_dict, 4,
+    random_exp, random_run = run_remote_experiment(worker, allocation, "random", exp_dict, config.n_runs,
                                                    directory=repo_dir, log=log)
 
     # Create dataframe of individual experiments for csv
@@ -631,8 +633,7 @@ def main():
                 '*_env_out.csv', "_all_env_out.csv")
 
     # Run statistical analysis
-    df = pd.read_csv('examples/test_data.csv')
-    run_stats(df, results_dir, timestamp)
+    run_stats(all_exps, results_dir, timestamp)
 
     # Releasing allocated resources
     release_resources_wrapper(args, allocation)
