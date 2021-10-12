@@ -39,7 +39,7 @@ When you have `conda` installed and initialized, create a new environment using 
 
 ```
 cd sigmetrics-tool
-conda create -f environment.yml
+conda env create -f environment.yml
 ```
 
 To initialize the environment, do: `conda activate sigmetrics-tool`
