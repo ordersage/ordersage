@@ -38,6 +38,7 @@ After this, you might need to run: `~/miniconda/bin/conda init` (unless the inst
 When you have `conda` installed and initialized, create a new environment using the file provided in this repo:
 
 ```
+cd sigmetrics-tool
 conda create -f environment.yml
 ```
 
