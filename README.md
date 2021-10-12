@@ -42,9 +42,13 @@ cd sigmetrics-tool
 conda env create -f environment.yml
 ```
 
-To initialize the environment, do: `conda activate sigmetrics-tool`
+To initialize the environment, do: 
+```
+conda activate sigmetrics-tool
+```
 
-Always make sure that you run this `activate` command *before* running `controller.py`.
+**Always make sure that you run this `activate` command *before* running `controller.py` (otherwise the scripts will not find their dependencies!).**
+
 
 #### 3. Set up experiment repository
 
