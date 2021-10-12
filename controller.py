@@ -491,13 +491,12 @@ def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory
         run_times.append(run_stop - run_start)
         run_results = [id, worker, x, n_runs, order, rand_seed, run_start, run_stop]
         run_data.append(run_results)
-        if x != (n_runs - 1) and order != 'random':
-            try:
-                reboot(ssh, worker)
-            except:
-                log.warning('Worker ' + worker + 'failed to reboot after run ' +\
-                            x + ' of ' + n_runs + '. Ending ' + order + ' run early.')
-                break
+        try:
+            reboot(ssh, worker)
+        except:
+            log.warning('Worker ' + worker + 'failed to reboot after run ' +\
+                        x + ' of ' + n_runs + '. Ending ' + order + ' run early.')
+            break
 
         ssh.close()
     return exp_data,run_data
