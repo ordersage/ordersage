@@ -462,7 +462,7 @@ def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory
         if x > 0:
             est_time_remaining = mean(run_times) * (n_runs + order_add - x)
             est_time_remaining = str(datetime.timedelta(seconds=est_time_remaining))
-            log.info("ESTIMATED TIME REMAINING: " + est_time_remaining)
+            log.info('\033[1m' + 'ESTIMATED TIME REMAINING: ' + est_time_remaining + '\033[0m')
         if order == "random":
             random.shuffle(exps)
 
@@ -631,8 +631,7 @@ def main():
                 '*_env_out.csv', "_all_env_out.csv")
 
     # Run statistical analysis
-    df = pd.read_csv('examples/test_data.csv')
-    run_stats(df, results_dir, timestamp)
+    run_stats(all_exps, results_dir, timestamp)
 
     # Releasing allocated resources
     release_resources_wrapper(args, allocation)

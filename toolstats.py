@@ -8,9 +8,27 @@ import statistics as stat
 import scipy.stats as stats
 import itertools
 from logger import configure_logging
+import argparse
 
 LOG = configure_logging(name="toolstats", filter = True, debug = True, \
                         to_console = True, filename = "mainlogfile.log")
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Description of supported command-line arguments:')
+    parser.add_argument('-f','--file', type=str, default='',
+                        help='CSV file contaning the results from an execution of controller.py')
+    parser.add_argument('-d','--results_dir', type=str, default='.',
+                        help='Path to save results from toolstats.py')
+    parser.add_argument('-t','--test', action='store_true', default=False,
+                        help='Run toolstats.py with example dataset')
+
+    args = parser.parse_args()
+
+    if args.test is False and args.file == '':
+        LOG.critical('Invalid Arguments: Please provide \'-f filename\'')
+        sys.exit(1)
+
+    return args
 
 def process_data(data):
     # Remove failures
@@ -50,7 +68,7 @@ def run_stats(data, results_dir, timestamp):
         LOG.info("Comparing individual node stats with combined")
         LOG.info("----------------------------------------------")
         compared_stats = compare_nodes(combined_stats, single_node_stats)
-        compared_stats.to_csv(results_dir + '/' + timestamp + 'compared_stats.csv', index=False)
+        compared_stats.to_csv(results_dir + '/' + timestamp + '_compared_stats.csv', index=False)
 
 def run_group_stats(data, group=['exp_command']):
     fixed_data = data[data['order_type'] == 'fixed']
@@ -328,9 +346,17 @@ def convert_list(l):
     return '-'.join(l)
 
 def main():
-    df = pd.read_csv('examples/test_data.csv')
+    args = parse_args()
+
+    if args.test:
+        df = pd.read_csv('examples/test_data.csv')
+        results_dir = 'examples'
+    else:
+        df = pd.read_csv(args.file)
+        results_dir = args.results_dir
+
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H:%M:%S")
-    run_stats(df, 'examples', timestamp)
+    run_stats(df, results_dir, timestamp)
 
 if __name__ == "__main__":
     main()
