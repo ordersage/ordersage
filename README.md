@@ -2,6 +2,11 @@
 
 This repo contains the code for running benchmarks in fixed/randomized orders on specified remote resources.
 
+To clone: 
+```
+git clone https://gitlab.flux.utah.edu/carina/sigmetrics-tool.git
+```
+
 ## To Start
 
 #### 1. Update `config.py`
