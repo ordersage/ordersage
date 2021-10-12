@@ -49,8 +49,17 @@ conda activate sigmetrics-tool
 
 **Always make sure that you run this `activate` command *before* running `controller.py` (otherwise the scripts will not find their dependencies!).**
 
+#### 3. Set up ssh keys if necessary (typically need to set this up once for each contoller node)
 
-#### 3. Set up experiment repository
+On the controller node, run:
+```
+ssh-keygen -o -a 100 -t ed25519 -f ~/.ssh/id_ed25519 -C "<your email>"
+```
+Then copy the contents of the generated public key (` ~/.ssh/id_ed25519.pub`) to the file: `~/.ssh/authorized_keys` on **each** of the worker nodes that will be used for running experiments.
+
+To test the ssh connection from the controller node, run: `ssh <user>@<worker_hostname>`.
+
+#### 4. Set up experiment repository
 
 Inside `config.py`, update the `repo` option to your public repo containing experiments that need to be run.
 
@@ -71,7 +80,7 @@ bash exp_1.sh -r 20
 
 All experiment commands must be printed on new lines to stdout by running a script on a remote machine. The controller node will execute the remote script by running the command specified in `config.py` over an established ssh connection. It is from this script that the controller will distinguish an arbitrary fixed order from randomized orders.
 
-#### 4. Optional: Get code for allocating CloudLab nodes
+#### 5. Optional: Get code for allocating CloudLab nodes
 
 In order to use the code for allocating CloudLab nodes, which is available at:
 [https://gitlab.flux.utah.edu/emulab/cloudlab_allocator](https://gitlab.flux.utah.edu/emulab/cloudlab_allocator),
