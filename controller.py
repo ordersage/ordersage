@@ -488,7 +488,6 @@ def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory
             exp_data.append(exp_result)
         # Collect run information
         run_stop = timer()
-        run_times.append(run_stop - run_start)
         run_results = [id, worker, x, n_runs, order, rand_seed, run_start, run_stop]
         run_data.append(run_results)
         try:
@@ -499,6 +498,9 @@ def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory
             break
 
         ssh.close()
+        run_stop_r = timer()
+        run_times.append(run_stop_r - run_start)
+
     return exp_data,run_data
 
 #########################################################
