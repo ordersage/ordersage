@@ -445,6 +445,7 @@ def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory
     run_data = []
     run_times = []
     est_remaing_time = 0
+    
     # add random runs to fixed calculation
     order_add = n_runs if order == 'fixed' else 0
     exps = list(exp_dict.keys())

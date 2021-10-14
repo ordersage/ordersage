@@ -39,6 +39,17 @@ def process_data(data):
     # Drop all experiments failed in random runs
     data = data[~(data['completion_status'] == 'Failure')]
 
+    # Account for multiple values in single cell
+    """
+    1. identify rows that have multiple values
+    2. split string into list
+    3. get row values
+    4. remove results row
+    5. append new row to each value from 2
+    6. add back to df
+    """
+
+
     return data
 
 def run_stats(data, results_dir, timestamp):
@@ -87,7 +98,6 @@ def run_group_stats(data, group=['exp_command']):
     LOG.info("Running Kruskal Wallis")
     LOG.info("----------------------------------------------")
     kruskal_wallace = KW_test(data,"result", group)
-    kw_summary = summarize_kw_results(kruskal_wallace)
 
     # CI testing
     LOG.info("Comparing Confidence Intervals")
@@ -97,7 +107,7 @@ def run_group_stats(data, group=['exp_command']):
     stats_all = shapiro_wilk_fixed.merge(shapiro_wilk_random, how='outer', on=group)
     stats_all = stats_all.merge(kruskal_wallace, how='outer', on=group)
     stats_all = stats_all.merge(conf_intervals, how='outer', on=group)
-    summary = pd.concat([shapiro_summary_fixed, shapiro_summary_random, kw_summary],
+    summary = pd.concat([shapiro_summary_fixed, shapiro_summary_random],
                         axis=1)
     stats_all = stats_all.sort_values(by=['coeff_of_variation'], ascending=False)
     idx = len(group)
@@ -211,40 +221,6 @@ def get_percentile(df, quant):
         return df.quantile(quant)
     except:
         return np.nan
-
-def summarize_kw_results(kw_data):
-    # calculating average percentage difference
-    kw_data['abs_percent_diff'] = kw_data['percent_diff'].apply(abs)
-    avg_pd = sum(kw_data["abs_percent_diff"].values) / len(kw_data)
-    LOG.info("Average percent difference: " + str(avg_pd))
-
-    # Looking at whether the random or the fixed order performed better
-    LOG.info("Random vs. Fixed Order Performance")
-    LOG.info("----------------------------------------------")
-    pos = kw_data[(kw_data['percent_diff'] > 0) &
-                    (kw_data['KW_p-value'] < 0.05)]['abs_percent_diff']
-    neg = kw_data[(kw_data['percent_diff'] < 0) &
-                    (kw_data['KW_p-value'] < 0.05)]['abs_percent_diff']
-    # add 10th percentile
-    performance_summary = pd.DataFrame(columns=["fixed_greater_count",
-                                                "fixed_Median",
-                                                "fixed_10th",
-                                                "fixed_90th",
-                                                "random_greater_count",
-                                                "random_Median",
-                                                "random_10th",
-                                                "random_90th"])
-    performance_summary.loc[len(performance_summary)] = \
-                            [len(pos),
-                            get_median(pos),
-                            get_percentile(pos, .1),
-                            get_percentile(pos, .9),
-                            len(neg),
-                            get_median(neg),
-                            get_percentile(neg, .1),
-                            get_percentile(neg, .9)]
-    LOG.info(performance_summary.to_string(index=False))
-    return performance_summary
 
 
 def CI_fixed_vs_random(data, measure, group, alpha = 0.95, p = 0.5):
