@@ -39,17 +39,6 @@ def process_data(data):
     # Drop all experiments failed in random runs
     data = data[~(data['completion_status'] == 'Failure')]
 
-    # Account for multiple values in single cell
-    """
-    1. identify rows that have multiple values
-    2. split string into list
-    3. get row values
-    4. remove results row
-    5. append new row to each value from 2
-    6. add back to df
-    """
-
-
     return data
 
 def run_stats(data, results_dir, timestamp):
@@ -109,13 +98,14 @@ def run_group_stats(data, group=['exp_command']):
     stats_all = stats_all.merge(conf_intervals, how='outer', on=group)
     summary = pd.concat([shapiro_summary_fixed, shapiro_summary_random],
                         axis=1)
-    stats_all = stats_all.sort_values(by=['coeff_of_variation'], ascending=False)
+    stats_all = stats_all.sort_values(by=['coeff_of_variation_random'], ascending=False)
     idx = len(group)
     # Shift high level stats to front
-    stats_all.insert(idx, 'coeff_of_variation', stats_all.pop('coeff_of_variation'))
-    stats_all.insert(idx+1, 'KW_dist_type', stats_all.pop('KW_dist_type'))
-    stats_all.insert(idx+2, 'Normal_fixed', stats_all.pop('Normal_fixed'))
-    stats_all.insert(idx+3, 'Normal_random', stats_all.pop('Normal_random'))
+    stats_all.insert(idx, 'coeff_of_variation_fixed', stats_all.pop('coeff_of_variation_fixed'))
+    stats_all.insert(idx+1, 'coeff_of_variation_random', stats_all.pop('coeff_of_variation_random'))
+    stats_all.insert(idx+2, 'KW_dist_type', stats_all.pop('KW_dist_type'))
+    stats_all.insert(idx+3, 'Normal_fixed', stats_all.pop('Normal_fixed'))
+    stats_all.insert(idx+4, 'Normal_random', stats_all.pop('Normal_random'))
 
     return stats_all, summary
 
@@ -157,7 +147,8 @@ def KW_test(df, measure, group):
     sample_count_thresh = 50
     kruskal_wallace = pd.DataFrame(columns = group + \
                                             ['KW_dist_type',
-                                            'coeff_of_variation',
+                                            'coeff_of_variation_fixed',
+                                            'coeff_of_variation_random',
                                             'KW_test_stat',
                                             'KW_p-value',
                                             'percent_diff',
@@ -171,7 +162,8 @@ def KW_test(df, measure, group):
         random_results = random_results.astype(np.float64)
 
         # run test and compute results
-        coef_of_var = round(stats.variation(grp[measure].values), 3)
+        coef_of_var_f = round(stats.variation(fixed_results), 3)
+        coef_of_var_r = round(stats.variation(random_results), 3)
         kw_stats = stats.kruskal(fixed_results, random_results)
         p_diff = percent_difference(fixed_results, random_results)
         effect_size = effect_size_eta_squared_KW(fixed_results, random_results, kw_stats[0])
@@ -185,7 +177,8 @@ def KW_test(df, measure, group):
         # if (len(random_sample) >= sample_count_thresh) and (len(seq_sample) >= sample_count_thresh):
         kruskal_wallace.loc[len(kruskal_wallace)] = config + \
                                                 [kw_dist,
-                                                coef_of_var,
+                                                coef_of_var_f,
+                                                coef_of_var_r,
                                                 kw_stats[0],
                                                 kw_stats[1],
                                                 p_diff,
@@ -296,7 +289,8 @@ def get_ci(s,  alpha=0.95, p=0.5, n_thresh=10):
 
 def compare_nodes(combined_stats, single_stats):
     compared_stats = combined_stats[['exp_command']].copy()
-    compared_stats['COV_all'] = combined_stats['coeff_of_variation']
+    compared_stats['COV_fixed_all'] = combined_stats['coeff_of_variation_fixed']
+    compared_stats['COV_random_all'] = combined_stats['coeff_of_variation_random']
     compared_stats['KW_dist_type_all'] = combined_stats['KW_dist_type']
     compared_stats['CI_case_all'] = combined_stats['ci_case']
     dist_overview = []
@@ -306,7 +300,8 @@ def compare_nodes(combined_stats, single_stats):
         ss = group[['exp_command']].copy()
         ss['KW_dist_type_' + idx] = group['KW_dist_type']
         ss['CI_case_' + idx] = group['ci_case']
-        ss['COV_' + idx] = group['coeff_of_variation']
+        ss['COV_fixed_' + idx] = group['coeff_of_variation_fixed']
+        ss['COV_random_' + idx] = group['coeff_of_variation_random']
         compared_stats = compared_stats.merge(ss, how='outer', on='exp_command')
         overview = compared_stats['KW_dist_type_' + idx].tolist()
         overview = list(map((lambda x: x[0]), overview))
