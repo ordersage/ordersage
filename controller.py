@@ -436,7 +436,7 @@ def coordinate_initialization(allocation):
 #################################################################
 ### Run remote experiments on worker node and record metadata ###
 #################################################################
-def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory,log=None):
+def run_remote_experiment(worker, allocation, exp_dict, n_runs, directory,log=None):
     """ Runs experiments on worker node in either a fixed, arbitrary order or
     a random order. Runs will be executed 'n_runs' times, and results will be saved
     on the worker end. Upon completion, each run and its metadata will be stored.
@@ -445,9 +445,9 @@ def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory
     run_data = []
     run_times = []
     est_remaing_time = 0
-    
+    n_runs = n_runs * 2
+
     # add random runs to fixed calculation
-    order_add = n_runs if order == 'fixed' else 0
     exps = list(exp_dict.keys())
     if log is None:
         log = LOG
@@ -457,20 +457,25 @@ def run_remote_experiment(worker, allocation, order, exp_dict, n_runs, directory
 
     # Begin exp loop n times
     for x in range(n_runs):
+
         id = uuid.uuid1()
         ssh = open_ssh_connection(worker, allocation, log)
+        order = 'fixed' if x % 2 == 0 else 'random'
+        log.info("Running loop " + str(x + 1) + " of " + str(n_runs) + " in " + order + " order.")
 
-        log.info("Running " + order + " loop " + str(x + 1) + " of " + str(n_runs))
         if x > 0:
-            est_time_remaining = mean(run_times) * (n_runs + order_add - x)
+            est_time_remaining = mean(run_times) * (n_runs - x)
             est_time_remaining = str(datetime.timedelta(seconds=est_time_remaining))
             log.info('\033[1m' + 'ESTIMATED TIME REMAINING: ' + est_time_remaining + '\033[0m')
+
         if order == "random":
-            random.shuffle(exps)
+            ordered_exps = random.sample(exps, len(exps))
+        else:
+            ordered_exps = exps
 
         run_start = timer()
         # Run each command provided by user
-        for i, exp in enumerate(exps):
+        for i, exp in enumerate(ordered_exps):
             # Get experiment command from dictionary
             cmd = exp_dict.get(exp)
             log.info("Running " + cmd + "...")
@@ -520,18 +525,16 @@ def run_single_node(worker, allocation, results_dir, exps, timestamp, log=None):
     repo_dir = repo_dir[:-len(".git")] if repo_dir.endswith(".git") else repo_dir
 
     # Run experiments, returns lists to add to dataframe
-    fixed_exp, fixed_run = run_remote_experiment(worker, allocation, "fixed", exp_dict, config.n_runs,
+    exp_results, run_results = run_remote_experiment(worker, allocation, exp_dict, config.n_runs,
                                                  directory=repo_dir, log=log)
-    random_exp, random_run = run_remote_experiment(worker, allocation, "random", exp_dict, config.n_runs,
-                                                   directory=repo_dir, log=log)
 
     # Create dataframe of individual experiments for csv
-    exp_results_csv = pd.DataFrame(fixed_exp + random_exp,
+    exp_results_csv = pd.DataFrame(exp_results,
                                     columns=("run_uuid", "hostname", "run_num", "total_runs",
                                             "exp_command", "exp_number", "order_number",
                                             "order_type", "time_start", "time_stop",
                                             "completion_status"))
-    run_results_csv = pd.DataFrame(fixed_run + random_run,
+    run_results_csv = pd.DataFrame(run_results,
                                     columns=("run_uuid", "hostname", "run_num", "total_runs",
                                             "order_type", "random_seed", "time_start",
                                             "time_stop"))
