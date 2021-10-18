@@ -226,6 +226,9 @@ def CI_fixed_vs_random(data, measure, group, alpha = 0.95, p = 0.5):
                                       "ci_case",
                                       "inner_diff"])
 
+    hypotheses = data.nunique()[group][0]
+    # apply Bonferroni correction: https://www.statology.org/bonferroni-correction/
+    alpha = 1 - ( 1 - alpha ) / hypotheses
     for idx,grp in data.groupby(group):
         fixed_results = grp[grp.order_type == 'fixed'][measure].values
         fixed_results = fixed_results.astype(np.float64)
