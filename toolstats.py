@@ -34,9 +34,9 @@ def process_data(data):
     # Remove failures
     fixed_failures = data[(data['completion_status'] == 'Failure') &\
                          (data['order_type'] == 'fixed')]
-    # Drop all fixed runs with failed experiments
+    # Drop all fixed runs with failed tests
     data = data[~(data['run_uuid'].isin(fixed_failures['run_uuid']))]
-    # Drop all experiments failed in random runs
+    # Drop all tests failed in random runs
     data = data[~(data['completion_status'] == 'Failure')]
 
     return data
@@ -62,7 +62,7 @@ def run_stats(data, results_dir, timestamp):
         combined_stats.to_csv(results_dir + '/' + timestamp + '_combined_stats_summary.csv', index=False)
         LOG.info("Running stats for individual nodes")
         LOG.info("----------------------------------------------")
-        single_node_stats, summary_ind = run_group_stats(data, group=['hostname','exp_command'])
+        single_node_stats, summary_ind = run_group_stats(data, group=['hostname','test_command'])
         single_node_stats.to_csv(results_dir + '/' + timestamp + '_indv_node_stats.csv', index=False)
         summary_ind.to_csv(results_dir + '/' + timestamp + '_indv_stats_summary.csv', index=False)
         LOG.info("Comparing individual node stats with combined")
@@ -70,7 +70,7 @@ def run_stats(data, results_dir, timestamp):
         compared_stats = compare_nodes(combined_stats, single_node_stats)
         compared_stats.to_csv(results_dir + '/' + timestamp + '_compared_stats.csv', index=False)
 
-def run_group_stats(data, group=['exp_command']):
+def run_group_stats(data, group=['test_command']):
     fixed_data = data[data['order_type'] == 'fixed']
     random_data = data[data['order_type'] == 'random']
 
@@ -288,21 +288,21 @@ def get_ci(s,  alpha=0.95, p=0.5, n_thresh=10):
     return q, q_ci_lo, q_ci_hi
 
 def compare_nodes(combined_stats, single_stats):
-    compared_stats = combined_stats[['exp_command']].copy()
+    compared_stats = combined_stats[['test_command']].copy()
     compared_stats['COV_fixed_all'] = combined_stats['coeff_of_variation_fixed']
     compared_stats['COV_random_all'] = combined_stats['coeff_of_variation_random']
     compared_stats['KW_dist_type_all'] = combined_stats['KW_dist_type']
     compared_stats['CI_case_all'] = combined_stats['ci_case']
     dist_overview = []
 
-    # Run through each node and generate stats on distribution by experiment
+    # Run through each node and generate stats on distribution by test
     for idx, group in single_stats.groupby(['hostname']):
-        ss = group[['exp_command']].copy()
+        ss = group[['test_command']].copy()
         ss['KW_dist_type_' + idx] = group['KW_dist_type']
         ss['CI_case_' + idx] = group['ci_case']
         ss['COV_fixed_' + idx] = group['coeff_of_variation_fixed']
         ss['COV_random_' + idx] = group['coeff_of_variation_random']
-        compared_stats = compared_stats.merge(ss, how='outer', on='exp_command')
+        compared_stats = compared_stats.merge(ss, how='outer', on='test_command')
         overview = compared_stats['KW_dist_type_' + idx].tolist()
         overview = list(map((lambda x: x[0]), overview))
         dist_overview.append(overview)

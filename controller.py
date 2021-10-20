@@ -215,11 +215,11 @@ def execute_local_command(cmd, function_name="execute_local_command", max_tries=
     return "Success"
 
 ##########################
-### Reboot worker node ###
+### Reset worker node ###
 ##########################
-def reboot(ssh_client, worker, log=None):
+def reset(ssh_client, worker, log=None):
     """ Reboots worker node then checks periodically if it is back up. If
-    config.reboot is False, it will skip this command (for debugging only)
+    config.reset is False, it will skip this command (for debugging only)
     """
     n_tries = 0
     max_tries = 8
@@ -227,7 +227,7 @@ def reboot(ssh_client, worker, log=None):
         log = LOG
 
     # Skip reboot
-    if(config.reboot == False):
+    if(config.reset == False):
         return "Success"
 
     LOG.info("Rebooting...")
@@ -272,9 +272,9 @@ def reboot(ssh_client, worker, log=None):
 ### Initialize worker node ###
 ##############################
 def initialize_remote_server(repo, worker, allocation, log=None):
-    """ Sets up worker node to begin running experiments. Clones experiment
+    """ Sets up worker node to begin running tests. Clones experiment
     repo, runs initialization script, and facilitates collectin of e
-    specs. e will then be rebooted to a clean state to begin experimentation
+    specs. e will then be reset to a clean state to begin experimentation
     """
     max_tries = 3
     n_tries = 0
@@ -316,11 +316,11 @@ def initialize_remote_server(repo, worker, allocation, log=None):
                         '. Exiting...')
         raise
 
-    # Reboot to clean state
+    # Reset to clean state
     try:
-        reboot(ssh, worker)
+        reset(ssh, worker)
     except:
-        log.critical(worker + " failed to reboot...exiting.")
+        log.critical(worker + " failed to reset...exiting.")
         raise
 
     ssh.close()
@@ -382,7 +382,7 @@ def release_cloudlab(args, allocation):
     LOG.info("Done deallocating nodes on CloudLab.")
 
 #####################################################
-### sets up node and returns list of experiments ####
+### sets up node and returns list of tests ####
 #####################################################
 def coordinate_initialization(allocation):
     if(len(allocation.hostnames) == 1):
@@ -415,47 +415,47 @@ def coordinate_initialization(allocation):
         LOG.critical('All nodes failed to initialize. Exiting...')
         sys.exit(2)
 
-    # Pick first allocation to retrieve experiment command list
+    # Pick first allocation to retrieve test command list
     ssh = open_ssh_connection(allocation.hostnames[0], allocation)
-    # Call function to print list of experiments and direct to stdout
-    LOG.info("Retrieving experiment commands from " + allocation.hostnames[0] + "...")
+    # Call function to print list of tests and direct to stdout
+    LOG.info("Retrieving test commands from " + allocation.hostnames[0] + "...")
     f = io.StringIO()
     with redirect_stdout(f):
         try:
-            execute_remote_command(ssh, config.experiment_script_call,
+            execute_remote_command(ssh, config.exp_script_call,
                                     print_to_console=True)
         except:
-            LOG.critical('Failed to retrieve experiment commands...exiting.')
+            LOG.critical('Failed to retrieve test commands...exiting.')
             sys.exit(2)
-    exps = f.getvalue()
-    exps = exps.splitlines()
-    exps = list(filter(None, exps))
+    tests = f.getvalue()
+    tests = tests.splitlines()
+    tests = list(filter(None, tests))
     ssh.close()
-    return exps
+    return tests
 
 #################################################################
-### Run remote experiments on worker node and record metadata ###
+### Run remote tests on worker node and record metadata ###
 #################################################################
-def run_remote_experiment(worker, allocation, exp_dict, n_runs, directory,log=None):
-    """ Runs experiments on worker node in either a fixed, arbitrary order or
+def run_remote_experiment(worker, allocation, test_dict, n_runs, directory,log=None):
+    """ Runs tests on worker node in either a fixed, arbitrary order or
     a random order. Runs will be executed 'n_runs' times, and results will be saved
     on the worker end. Upon completion, each run and its metadata will be stored.
     """
-    exp_data = []
+    test_data = []
     run_data = []
     run_times = []
     est_remaing_time = 0
     n_runs = n_runs * 2
 
     # add random runs to fixed calculation
-    exps = list(exp_dict.keys())
+    tests = list(test_dict.keys())
     if log is None:
         log = LOG
     # Set seed
     rand_seed = config.seed if config.seed else time.time()
     random.seed(rand_seed)
 
-    # Begin exp loop n times
+    # Begin runs n times
     for x in range(n_runs):
 
         id = uuid.uuid1()
@@ -469,15 +469,15 @@ def run_remote_experiment(worker, allocation, exp_dict, n_runs, directory,log=No
             log.info('\033[1m' + 'ESTIMATED TIME REMAINING: ' + est_time_remaining + '\033[0m')
 
         if order == "random":
-            ordered_exps = random.sample(exps, len(exps))
+            ordered_tests = random.sample(tests, len(tests))
         else:
-            ordered_exps = exps
+            ordered_tests = tests
 
         run_start = timer()
         # Run each command provided by user
-        for i, exp in enumerate(ordered_exps):
-            # Get experiment command from dictionary
-            cmd = exp_dict.get(exp)
+        for i, test in enumerate(ordered_tests):
+            # Get test command from dictionary
+            cmd = test_dict.get(test)
             log.info("Running " + cmd + "...")
             start = time.process_time()
             try:
@@ -489,17 +489,17 @@ def run_remote_experiment(worker, allocation, exp_dict, n_runs, directory,log=No
             else:
                 result = "Success"
             stop = time.process_time()
-            # Save experiment with completion status and metadata
-            exp_result = [id, worker, x, n_runs, cmd, exp, i, order, start, stop, result]
-            exp_data.append(exp_result)
+            # Save test with completion status and metadata
+            test_result = [id, worker, x, n_runs, cmd, test, i, order, start, stop, result]
+            test_data.append(test_result)
         # Collect run information
         run_stop = timer()
         run_results = [id, worker, x, n_runs, order, rand_seed, run_start, run_stop]
         run_data.append(run_results)
         try:
-            reboot(ssh, worker)
+            reset(ssh, worker)
         except:
-            log.warning('Worker ' + worker + 'failed to reboot after run ' +\
+            log.warning('Worker ' + worker + 'failed to reset after run ' +\
                         x + ' of ' + n_runs + '. Ending ' + order + ' run early.')
             break
 
@@ -507,31 +507,31 @@ def run_remote_experiment(worker, allocation, exp_dict, n_runs, directory,log=No
         run_stop_r = timer()
         run_times.append(run_stop_r - run_start)
 
-    return exp_data,run_data
+    return test_data,run_data
 
 #########################################################
 ###      Workflow for single-node experimentation      ###
 #########################################################
-def run_single_node(worker, allocation, results_dir, exps, timestamp, log=None):
+def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None):
     if log is None:
         log = LOG
     log.info("Beginning experimentation for " + worker)
 
-    # Assign number to each experiment and store in dictionary
-    exp_dict = {i : exps[i] for i in range(0, len(exps))}
+    # Assign number to each test and store in dictionary
+    test_dict = {i : tests[i] for i in range(0, len(tests))}
 
     # Extract name of dir where repo code whill be cloned (i.e. lowest-level dir in path)
     repo_dir = Path(config.repo).name
     repo_dir = repo_dir[:-len(".git")] if repo_dir.endswith(".git") else repo_dir
 
-    # Run experiments, returns lists to add to dataframe
-    exp_results, run_results = run_remote_experiment(worker, allocation, exp_dict, config.n_runs,
+    # Run tests, returns lists to add to dataframe
+    test_results, run_results = run_remote_experiment(worker, allocation, test_dict, config.n_runs,
                                                  directory=repo_dir, log=log)
 
-    # Create dataframe of individual experiments for csv
-    exp_results_csv = pd.DataFrame(exp_results,
+    # Create dataframe of individual tests for csv
+    test_results_csv = pd.DataFrame(test_results,
                                     columns=("run_uuid", "hostname", "run_num", "total_runs",
-                                            "exp_command", "exp_number", "order_number",
+                                            "test_command", "test_number", "order_number",
                                             "order_type", "time_start", "time_stop",
                                             "completion_status"))
     run_results_csv = pd.DataFrame(run_results,
@@ -565,9 +565,9 @@ def run_single_node(worker, allocation, results_dir, exps, timestamp, log=None):
     results = [x.strip() for x in results]
 
     # Add results to dataframe and save as csv specific to host
-    log.info("Adding results to experiment metadata")
-    exp_results_csv["result"] = results
-    exp_results_csv.to_csv(results_dir + "/" + worker + "_experiment_results.csv", index=False)
+    log.info("Adding results to test metadata")
+    test_results_csv["result"] = results
+    test_results_csv.to_csv(results_dir + "/" + worker + "_test_results.csv", index=False)
     run_results_csv.to_csv(results_dir + "/" + worker + "_run_results.csv", index=False)
 
     # Move repo to new directory with timestamped name
@@ -575,24 +575,24 @@ def run_single_node(worker, allocation, results_dir, exps, timestamp, log=None):
     try:
         execute_remote_command(ssh, 'mv ' + repo_dir + ' ' + timestamp + '_' + repo_dir)
     except:
-        log.warning('Experiments repo on ' + worker + ' unsuccessfully moved to ' +\
+        log.warning('Experiment repo on ' + worker + ' unsuccessfully moved to ' +\
                     repo_dir + ' ' + timestamp + '_' + repo_dir +
                     '. Please delete or change before re-running controller.py')
     ssh.close()
 
-    log.info("Experiemnts completed on node (%s) and stored" % worker)
+    log.info("Experiemnt completed on node (%s) and stored" % worker)
 
 ##################################################################
 ### Workflow for experimentation using multiple-nodes #############
 ##################################################################
-def run_multiple_nodes(allocation, results_dir, exps, timestamp):
+def run_multiple_nodes(allocation, results_dir, tests, timestamp):
     threads = [None] * len(allocation.hostnames)
 
     for n, host in enumerate(allocation.hostnames):
         t_log = configure_logging("main.Thread." + str(n), debug=config.verbose, filename=host+".log")
         threads[n] = ThreadWithReturn(target=run_single_node,
                                       args=(host, allocation,
-                                            results_dir, exps, timestamp, t_log,),
+                                            results_dir, tests, timestamp, t_log,),
                                             name=host)
         threads[n].start()
 
@@ -619,26 +619,26 @@ def main():
     results_dir = timestamp + "_results"
     execute_local_command(["mkdir", results_dir])
 
-    # Initialize each node and retrieve list of commands to run experiments
-    exp_commands = coordinate_initialization(allocation)
+    # Initialize each node and retrieve list of commands to run tests
+    test_commands = coordinate_initialization(allocation)
 
     if len(allocation.hostnames) == 1:
         worker = allocation.hostnames[0]
-        run_single_node(worker, allocation, results_dir, exp_commands, timestamp)
+        run_single_node(worker, allocation, results_dir, test_commands, timestamp)
     elif len(allocation.hostnames) > 1:
-        run_multiple_nodes(allocation, results_dir, exp_commands, timestamp)
+        run_multiple_nodes(allocation, results_dir, test_commands, timestamp)
     else:
         LOG.error("Something went wrong. No nodes allocated")
     # Save all results to single file
-    all_exps = concat_results(results_dir, timestamp,
-                '*_experiment_results.csv', "_all_exp_results.csv")
+    all_tests = concat_results(results_dir, timestamp,
+                '*_test_results.csv', "_all_test_results.csv")
     all_runs = concat_results(results_dir, timestamp,
                 '*_run_results.csv', "_all_run_results.csv")
     all_envs = concat_results(results_dir, timestamp,
                 '*_env_out.csv', "_all_env_out.csv")
 
     # Run statistical analysis
-    run_stats(all_exps, results_dir, timestamp)
+    run_stats(all_tests, results_dir, timestamp)
 
     # Releasing allocated resources
     release_resources_wrapper(args, allocation)
