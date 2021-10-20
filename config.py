@@ -23,8 +23,8 @@ results_file = "results.txt"
 """
 Controller options
 """
-n_runs = 4
-interleave = False
+n_runs = 3
+interleave = True
 verbose = True
-reset = True
+reset = False
 seed = None

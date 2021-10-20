@@ -460,7 +460,10 @@ def run_remote_experiment(worker, allocation, test_dict, n_runs, directory,log=N
 
         id = uuid.uuid1()
         ssh = open_ssh_connection(worker, allocation, log)
-        order = 'fixed' if x % 2 == 0 else 'random'
+        if config.interleave:
+            order = 'fixed' if x % 2 == 0 else 'random'
+        else:
+            order = 'fixed' if x < (n_runs / 2) else 'random'
         log.info("Running loop " + str(x + 1) + " of " + str(n_runs) + " in " + order + " order.")
 
         if x > 0:
