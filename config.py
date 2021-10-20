@@ -2,9 +2,9 @@
 SSH Configurations
 """
 # pre-allocated worker nodes must be added here by hostname
-workers = ["ms0745.utah.cloudlab.us"]
-user = "carina"
-keyfile = "/home/carina/.ssh/id_cloud"
+workers = ["hostname"]
+user = "user"
+keyfile = "~/.ssh/id_ed25519"
 port_num = 22
 
 """
@@ -23,8 +23,13 @@ results_file = "results.txt"
 """
 Controller options
 """
+# specifies the number of runs for both fixed and random order
 n_runs = 3
+# specifies if random and fixed runs should be interleaved or not
 interleave = True
+# prints STDOUT of workers to console
 verbose = True
+# Ignore reset command for debugging purposes
 reset = False
+# Set your own random seed
 seed = None
