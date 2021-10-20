@@ -11,9 +11,9 @@ git clone https://gitlab.flux.utah.edu/carina/sigmetrics-tool.git
 
 #### 1. Update `config.py`
 
-Users must fill out or update `config.py` prior to usage of the controller script. Configuration must include the SSH information for the worker node (unless Cloudlab resources will be used), the repository that will contain the experiments, the paths to the specified files and directories, and optional debugging and random seed information.
+Users must fill out or update `config.py` prior to usage of the controller script. Configuration must include the SSH information for the worker node (unless Cloudlab resources will be used), the repository that will contain the tests, the paths to the specified files and directories, and optional debugging and random seed information.
 
-Additionally, `config.py` must contain commands to run an initialization script (see `Initialization`) and a script that prints all experiment commands to stdout.
+Additionally, `config.py` must contain commands to run an initialization script (see `Initialization`) and a script that prints all test commands to stdout.
 
 #### 2. Get all dependencies (set up environment)
 
@@ -61,24 +61,24 @@ To test the ssh connection from the controller node, run: `ssh <user>@<worker_ho
 
 #### 4. Set up experiment repository
 
-Inside `config.py`, update the `repo` option to your public repo containing experiments that need to be run.
+Inside `config.py`, update the `repo` option to your public repo containing tests that need to be run.
 
 Examples of such repo can be seen at: [https://gitlab.flux.utah.edu/carina/os-experiments](https://gitlab.flux.utah.edu/carina/os-experiments)
 and [https://gitlab.flux.utah.edu/Duplyakin/test-experiments](https://gitlab.flux.utah.edu/Duplyakin/test-experiments)
 
 ##### Initialization
 
-Experiment repositories must contain a script `initialization.sh` that readies the worker node(s) for experimentation. Our `controller.py` script will run the `initialization.sh` before experimentation and reboot to achieve a clean state. Initialization must include the creation of a results directory whose location is recorded in `config.py`.
+Experiment repositories must contain a script `initialization.sh` that readies the worker node(s) for experimentation. Our `controller.py` script will run the `initialization.sh` before experimentation and reset to achieve a clean state. Initialization must include the creation of a results directory whose location is recorded in `config.py`.
 
 ##### Experiment Configuration File
 
-The controller script requires the set of experiments to be run in the form of their command line command and arguments. For example:
+The controller script requires the set of tests to be run in the form of their command line command and arguments. For example:
 
 ```
 bash exp_1.sh -r 20
 ```
 
-All experiment commands must be printed on new lines to stdout by running a script on a remote machine. The controller node will execute the remote script by running the command specified in `config.py` over an established ssh connection. It is from this script that the controller will distinguish an arbitrary fixed order from randomized orders.
+All test commands must be printed on new lines to stdout by running a script on a remote machine. The controller node will execute the remote script by running the command specified in `config.py` over an established ssh connection. It is from this script that the controller will distinguish an arbitrary fixed order from randomized orders.
 
 #### 5. Optional: Get code for allocating CloudLab nodes
 
@@ -93,7 +93,7 @@ Follow the steps described in the `README.md` from that repository.
 Installing `geni-lib` and setting up user credentials as described there are prerequisites for accessing CloudLab.
 
 Update the config file with CloudLab-specific options inside: `cloudlab.config`.
-Options such as `site`, `hw_type`, and `node_count` specify how many nodes and where should be allocated for each set of experiments run by this tool.
+Options such as `site`, `hw_type`, and `node_count` specify how many nodes and where should be allocated for each set of tests run by this tool.
 The rest of the options in that file relate to authentication and user credentials.
 
 If you decide to skip this step (and use a preallocated node, on CloudLab or elsewhere),
@@ -127,28 +127,28 @@ you should see a line at the beginning of the produced log messages like this:
 
 ## During experimentation
 
-Experiments will be executed in a fixed, arbitrary order (known as a run). A run will be repeated a number of times specified by setting `n_runs` in `config.py`. The remote worker(s) will be rebooted after each run to ensure a clean machine state. The experiments will then be randomized using a user-provided seed or epoch time seed as a default and run. Re-randomization and execution of the experiments will occur a number of times specified by `n_runs`. Worker node(s) will be rebooted for a clean state between each run.
+Tests will be executed in a fixed, arbitrary order (known as a run). A run will be repeated a number of times specified by setting `n_runs` in `config.py`. The remote worker(s) will be rebooted after each run to ensure a clean machine state. The tests will then be randomized using a user-provided seed or epoch time seed as a default and run. Re-randomization and execution of the tests will occur a number of times specified by `n_runs`. Worker node(s) will be rebooted for a clean state between each run.
 
 **Debugging:** All debug information will be saved to a log file. In `config.py`, `verbose=True` will direct STDOUT to be printed to the terminal as DEBUG information. Any errors during execution and information statements will be both saved to the log file and printed to the terminal.
 
 ## Results
 
-Results will be saved to a timestamped folder in the `sigmetrics-tool` repository. A single results folder contains metadata of each run (found in `run_results.csv`) in addition the results of each experiment (in `exp_results.csv`), and the machine specs of the worker node(s) (in `env_out.csv`). Experiment results will include the returned result of the experiment, as well as a report of success or failure.
+Results will be saved to a timestamped folder in the `sigmetrics-tool` repository. A single results folder contains metadata of each run (found in `run_results.csv`) in addition the results of each test (in `exp_results.csv`), and the machine specs of the worker node(s) (in `env_out.csv`). Test results will include the returned result of the test, as well as a report of success or failure.
 
 ##### Result Requirements
 
-In order to automate the collection of results and statistical analysis of experiment order, the user must meet the following requirements when gathering results in the code implemented as part of the experiment repository:
+In order to automate the collection of results and statistical analysis of test order, the user must meet the following requirements when gathering results in the code implemented as part of the experiment repository:
 
-1. Results from each experiment must be collected and stored in a text file (file name specified in `config.py` as `results_file`) as a single column of floating-point numbers written in the order the experiments were called by the controller script.
+1. Results from each test must be collected and stored in a text file (file name specified in `config.py` as `results_file`) as a single column of floating-point numbers written in the order the tests were called by the controller script.
 2. Result text file and machine spec information will moved to a results directory and transferred to the controller node together. The results directory path must be specified by the user in `config.py` as `results_dir`.
-3. All failed experiments must return a non-zero exit code, and also a value of the user's choice in the results text file (i.e even a failed experiment must produce a result to the results text file).
+3. All failed tests must return a non-zero exit code, and also a value of the user's choice in the results text file (i.e even a failed test must produce a result to the results text file).
 
 ## Statistical Analysis
 
 Results from runs will be analyzed via `toolstats.py`. Here, it is assumed that all nodes are of the same hardware type. Analysis will occur for both single node executions and multinode and contain the following statistical tests:
 
 1. Shapiro Wilk: separates normally distributed data from not normally distributed data
-2. Kruskall Wallace: reports whether experiment order has a statistically significant impact on performance
+2. Kruskall Wallace: reports whether test order has a statistically significant impact on performance
 3. Percent Difference: difference between means of fixed-arbitrary vs random order
 4. Effect Size: magnitude of percent difference
 5. Confidence Interval Comparisons: categorizes CI of two tests as: 
