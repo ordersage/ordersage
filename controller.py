@@ -523,7 +523,7 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
     # Assign number to each test and store in dictionary
     test_dict = {i : tests[i] for i in range(0, len(tests))}
 
-    # Extract name of dir where repo code whill be cloned (i.e. lowest-level dir in path)
+    # Extract name of dir where repo code will be cloned (i.e. lowest-level dir in path)
     repo_dir = Path(config.repo).name
     repo_dir = repo_dir[:-len(".git")] if repo_dir.endswith(".git") else repo_dir
 

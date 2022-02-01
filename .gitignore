@@ -6,4 +6,3 @@ cloudlab_allocator
 notes.txt
 *.csv
 controller2.py
-pre_process.py
