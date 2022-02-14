@@ -6,6 +6,13 @@ import statistics as stat
 import scipy.stats as stats
 import argparse
 
+"""
+TODO:
+- Update graphs
+- Integrate with toolstats.py
+- Add in summary information
+"""
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Description of supported command-line arguments:')
     parser.add_argument('-f','--file', type=str, default='',
@@ -25,14 +32,7 @@ def get_median(df):
     except:
         return np.nan
 
-"""
-For values in the given array s and p in [0, 1], this fuction returns
-empirical p-quantile value and its nonparametric 95% confidence interval.
-Refer to book by Boudec:
-https://infoscience.epfl.ch/record/146812/files/perfPublisherVersion_1.pdf,
-(Page 36 describes how nonparametric confidence intervals can be obtained
-for p-quantiles)
-"""
+# TODO: pull from toolstats
 def get_ci(s,  alpha=0.95, p=0.5, n_thresh=10):
     n = len(s)
     q = np.quantile(s, p)
