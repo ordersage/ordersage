@@ -46,6 +46,9 @@ from toolstats import run_stats
 # Config file parsing
 from configparser import ConfigParser
 
+TOOL_BASE_DIR = os.path.dirname(__file__)
+INSTRUMENTATION_SCRIPTS_DIR = os.path.join(TOOL_BASE_DIR, 'instrumentation')
+
 class ThreadWithReturn(threading.Thread):
     def run(self):
         self.exec = None
@@ -300,6 +303,9 @@ def initialize_remote_server(repo, worker, allocation, log=None):
             # Clone experimets repo
             log.info("Cloning repo: " + repo + "...")
             execute_remote_command(ssh, "git clone " + repo, log = log)
+
+        log.info("Pushing instrumentation dir to worker node repo: [%s]" % config.repo)
+        scp.put(INSTRUMENTATION_SCRIPTS_DIR, os.path.basename(INSTRUMENTATION_SCRIPTS_DIR), recursive=True)
 
         # Run initialization script. Results directory will be created here
         log.info("Running initialization script...")
