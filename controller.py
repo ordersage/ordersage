@@ -286,15 +286,20 @@ def initialize_remote_server(repo, worker, allocation, log=None):
     # Attemp to connect to server, and quit if failed
     try:
         ssh = open_ssh_connection(worker, allocation, log = log)
+        scp = SCPClient(ssh.get_transport())
     except:
         log.critical('Faiure to connect on initialization of ' + worker +
                         '. Exiting...')
         raise
 
     try:
-        # Clone experimets repo
-        log.info("Cloning repo: " + repo + "...")
-        execute_remote_command(ssh, "git clone " + repo, log = log)
+        if os.path.exists(config.repo):
+            log.info("Pushing test repo to worker node repo: [%s]" % config.repo)
+            scp.put(config.repo, os.path.basename(config.repo), recursive=True)
+        elif config.repo.endswith(".git"):
+            # Clone experimets repo
+            log.info("Cloning repo: " + repo + "...")
+            execute_remote_command(ssh, "git clone " + repo, log = log)
 
         # Run initialization script. Results directory will be created here
         log.info("Running initialization script...")
