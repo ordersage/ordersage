@@ -7,6 +7,8 @@ import io
 from contextlib import redirect_stdout
 from pathlib import Path
 import glob
+from functools import partial
+import shlex
 
 # Time libraries and RNG
 import time
@@ -46,8 +48,13 @@ from toolstats import run_stats
 # Config file parsing
 from configparser import ConfigParser
 
+# Instrumentation
+from instrumentation.configure import configure_instr_module, setup_instrumentation_env, setup_env_file
+
 TOOL_BASE_DIR = os.path.dirname(__file__)
 INSTRUMENTATION_SCRIPTS_DIR = os.path.join(TOOL_BASE_DIR, 'instrumentation')
+
+ENVIRONMENT_DICT = {}
 
 class ThreadWithReturn(threading.Thread):
     def run(self):
@@ -141,11 +148,11 @@ def execute_remote_command(ssh_client, cmd, max_tries=5, timeout=10,
         try:
             # Open channel and execute command
             transport = ssh_client.get_transport()
+            setup_env_file(ssh_client, env_dict=ENVIRONMENT_DICT)
             channel = transport.open_session()
             channel.set_combine_stderr(True)
+            cmd = "/bin/bash -c {}".format(shlex.quote("source ~/instr_env.txt;" + cmd))
             channel.exec_command(cmd)
-
-            # Capture stdout as it is received
             while True:
                 output = channel.recv(1024)
                 if not output:
@@ -323,7 +330,7 @@ def initialize_remote_server(repo, worker, allocation, log=None):
         execute_remote_command(ssh, "cd " + config.results_dir + " && mv env_out.csv "
                                     + worker + "_env_out.csv", log = log)
     except:
-        log.critical('Failed to run initialization script for ' + worker +
+        log.exception('Failed to run initialization script for ' + worker +
                         '. Exiting...')
         raise
 
@@ -490,6 +497,11 @@ def run_remote_experiment(worker, allocation, test_dict, n_runs, directory,log=N
         run_start = timer()
         # Run each command provided by user
         for i, test in enumerate(ordered_tests):
+            # Update the dict used by instrumentation scripts
+            ENVIRONMENT_DICT["ORDER"] = order
+            ENVIRONMENT_DICT["TEST_NUM"] = test
+            ENVIRONMENT_DICT["RUN_ID"] = id
+
             # Get test command from dictionary
             cmd = test_dict.get(test)
             log.info("Running " + cmd + "...")
@@ -531,6 +543,9 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
         log = LOG
     log.info("Beginning experimentation for " + worker)
 
+    # Add machine type to results file
+    ssh = open_ssh_connection(worker, allocation, log = log)
+
     # Assign number to each test and store in dictionary
     test_dict = {i : tests[i] for i in range(0, len(tests))}
 
@@ -538,7 +553,12 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
     repo_dir = Path(config.repo).name
     repo_dir = repo_dir[:-len(".git")] if repo_dir.endswith(".git") else repo_dir
 
+    # Configure instrumentation
+    for moduleName in config.instrumentation_modules:
+        configure_instr_module(partial(execute_remote_command, ssh, log=log), moduleName, ENVIRONMENT_DICT, log=log)
+
     # Run tests, returns lists to add to dataframe
+    ENVIRONMENT_DICT["TIMESTAMP"] = timestamp
     test_results, run_results = run_remote_experiment(worker, allocation, test_dict, config.n_runs,
                                                  directory=repo_dir, log=log)
 
@@ -553,8 +573,6 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
                                             "order_type", "random_seed", "time_start",
                                             "time_stop"))
 
-    # Add machine type to results file
-    ssh = open_ssh_connection(worker, allocation, log = log)
     results_with_hostname = worker + "_" + config.results_file
     try:
         execute_remote_command(ssh, "cd " + config.results_dir + " && "

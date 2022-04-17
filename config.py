@@ -33,3 +33,8 @@ verbose = True
 reset = False
 # Set your own random seed
 seed = None
+
+"""
+Instrumentation options, in the order they need to be added to the experiment
+"""
+instrumentation_modules = ["perf"]
