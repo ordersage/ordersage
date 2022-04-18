@@ -49,7 +49,7 @@ from toolstats import run_stats
 from configparser import ConfigParser
 
 # Instrumentation
-from instrumentation.configure import configure_instr_module, setup_instrumentation_env, setup_env_file
+from instrumentation.configure import configure_instr_module, setup_env_file, pull_results
 
 TOOL_BASE_DIR = os.path.dirname(__file__)
 INSTRUMENTATION_SCRIPTS_DIR = os.path.join(TOOL_BASE_DIR, 'instrumentation')
@@ -581,7 +581,6 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
     except:
         log.warning('Failed to rename results file from ' + config.results_file +\
                     ' to ' + results_with_hostname)
-    ssh.close()
 
     # scp everything in results directory from worker and rename with timestamp
     log.info("Transferring results from " + worker + " to local")
@@ -590,6 +589,12 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
             config.user + "@" + worker + ":" + config.results_dir + "/*",
             "./" + results_dir]
     execute_local_command(cmd)
+
+    # pull instrumentation results from worker
+    for moduleName in config.instrumentation_modules:
+        pull_results(ssh, moduleName, results_dir, log)
+
+    ssh.close()
 
     # Gather results
     with open(results_dir + "/" + results_with_hostname) as f:
