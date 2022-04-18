@@ -8,6 +8,9 @@ fi
 
 printf -v strcounters '%s,' "${perf_counters[@]}"
 mkdir -p $HOME/perf_results
+
+echo "Running task with perf instrumentation."
+echo "Modified command is: 'sudo perf stat -x, -o $HOME/perf_results/perf.txt -e ${strcounters%,} -- $@'"
 sudo perf stat -x, -o $HOME/perf_results/perf.txt -e ${strcounters%,} -- "$@"
 
 header="run_uuid,timestamp"
