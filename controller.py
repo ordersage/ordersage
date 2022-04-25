@@ -151,7 +151,6 @@ def execute_remote_command(ssh_client, cmd, max_tries=5, timeout=10,
             setup_env_file(ssh_client, env_dict=ENVIRONMENT_DICT)
             channel = transport.open_session()
             channel.set_combine_stderr(True)
-            cmd = "/bin/bash -c {}".format(shlex.quote("source ~/instr_env.txt;" + cmd))
             channel.exec_command(cmd)
             while True:
                 output = channel.recv(1024)
@@ -506,8 +505,11 @@ def run_remote_experiment(worker, allocation, test_dict, n_runs, directory,log=N
             cmd = test_dict.get(test)
             log.info("Running " + cmd + "...")
             start = time.process_time()
+            runCmd = "cd %s && %s" % (directory, cmd)
+            runCmd = "/bin/bash -c {}".format(
+                shlex.quote("source ~/instr_env.txt;" + runCmd))
             try:
-                execute_remote_command(ssh, "cd %s && %s" % (directory, cmd), log = log)
+                execute_remote_command(ssh, runCmd, log=log)
             except KeyboardInterrupt:
                 sys.exit(2)
             except:
