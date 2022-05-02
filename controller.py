@@ -148,7 +148,6 @@ def execute_remote_command(ssh_client, cmd, max_tries=5, timeout=10,
         try:
             # Open channel and execute command
             transport = ssh_client.get_transport()
-            setup_env_file(ssh_client, env_dict=ENVIRONMENT_DICT)
             channel = transport.open_session()
             channel.set_combine_stderr(True)
             channel.exec_command(cmd)
@@ -505,6 +504,7 @@ def run_remote_experiment(worker, allocation, test_dict, n_runs, directory,log=N
             cmd = test_dict.get(test)
             log.info("Running " + cmd + "...")
             start = time.process_time()
+            setup_env_file(ssh, env_dict=ENVIRONMENT_DICT)
             runCmd = "cd %s && %s" % (directory, cmd)
             runCmd = "/bin/bash -c {}".format(
                 shlex.quote("source ~/instr_env.txt;" + runCmd))
