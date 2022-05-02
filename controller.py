@@ -352,7 +352,7 @@ def access_provider_wrapper(args):
     else:
         LOG.info("Using pre-allocate node for running experiments")
         return Allocation(config.workers, user = config.user,
-                          public_key = config.keyfile)
+                          public_key = os.path.expanduser(config.keyfile))
 
 ##############################################
 ### Access Cloudlab and allocate resources ###
