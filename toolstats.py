@@ -39,6 +39,28 @@ def process_data(data):
     # Drop all tests failed in random runs
     data = data[~(data['completion_status'] == 'Failure')]
 
+    def to_float_list(s):
+        list_ = [float(x) for x in s.split(',')]
+        if len(list_) == 1:
+            return list_[0]
+        else:
+            return list_
+
+    data['result'] = data['result'].apply(to_float_list)
+    df_mem = data[data["test_command"].str.contains("run_memory")]
+    data = data[data["test_command"].str.contains("run_memory") == False]
+
+    tests = ['copy_omp','scale_omp','add_omp', 'triad_omp']
+    for index, row in df_mem.iterrows():
+        results = row['result']
+        id = row['test_command']
+        for i,r in enumerate(results):
+            temp = row.copy()
+            temp['result'] = r
+            temp['test_command'] = id + ' -- ' + tests[i]
+            data = data.append(temp)
+
+
     return data
 
 def run_stats(data, results_dir, timestamp):

@@ -7,6 +7,8 @@ import io
 from contextlib import redirect_stdout
 from pathlib import Path
 import glob
+from functools import partial
+import shlex
 
 # Time libraries and RNG
 import time
@@ -45,6 +47,14 @@ from toolstats import run_stats
 
 # Config file parsing
 from configparser import ConfigParser
+
+# Instrumentation
+from instrumentation.configure import configure_instr_module, setup_env_file, pull_results
+
+TOOL_BASE_DIR = os.path.dirname(__file__)
+INSTRUMENTATION_SCRIPTS_DIR = os.path.join(TOOL_BASE_DIR, 'instrumentation')
+
+ENVIRONMENT_DICT = {}
 
 class ThreadWithReturn(threading.Thread):
     def run(self):
@@ -141,8 +151,6 @@ def execute_remote_command(ssh_client, cmd, max_tries=5, timeout=10,
             channel = transport.open_session()
             channel.set_combine_stderr(True)
             channel.exec_command(cmd)
-
-            # Capture stdout as it is received
             while True:
                 output = channel.recv(1024)
                 if not output:
@@ -286,15 +294,23 @@ def initialize_remote_server(repo, worker, allocation, log=None):
     # Attemp to connect to server, and quit if failed
     try:
         ssh = open_ssh_connection(worker, allocation, log = log)
+        scp = SCPClient(ssh.get_transport())
     except:
         log.critical('Faiure to connect on initialization of ' + worker +
                         '. Exiting...')
         raise
 
     try:
-        # Clone experimets repo
-        log.info("Cloning repo: " + repo + "...")
-        execute_remote_command(ssh, "git clone " + repo, log = log)
+        if os.path.exists(config.repo):
+            log.info("Pushing test repo to worker node repo: [%s]" % config.repo)
+            scp.put(config.repo, os.path.basename(config.repo), recursive=True)
+        elif config.repo.endswith(".git"):
+            # Clone experimets repo
+            log.info("Cloning repo: " + repo + "...")
+            execute_remote_command(ssh, "git clone " + repo, log = log)
+
+        log.info("Pushing instrumentation dir to worker node repo: [%s]" % config.repo)
+        scp.put(INSTRUMENTATION_SCRIPTS_DIR, os.path.basename(INSTRUMENTATION_SCRIPTS_DIR), recursive=True)
 
         # Run initialization script. Results directory will be created here
         log.info("Running initialization script...")
@@ -312,7 +328,7 @@ def initialize_remote_server(repo, worker, allocation, log=None):
         execute_remote_command(ssh, "cd " + config.results_dir + " && mv env_out.csv "
                                     + worker + "_env_out.csv", log = log)
     except:
-        log.critical('Failed to run initialization script for ' + worker +
+        log.exception('Failed to run initialization script for ' + worker +
                         '. Exiting...')
         raise
 
@@ -335,7 +351,7 @@ def access_provider_wrapper(args):
     else:
         LOG.info("Using pre-allocate node for running experiments")
         return Allocation(config.workers, user = config.user,
-                          public_key = config.keyfile)
+                          public_key = os.path.expanduser(config.keyfile))
 
 ##############################################
 ### Access Cloudlab and allocate resources ###
@@ -479,12 +495,21 @@ def run_remote_experiment(worker, allocation, test_dict, n_runs, directory,log=N
         run_start = timer()
         # Run each command provided by user
         for i, test in enumerate(ordered_tests):
+            # Update the dict used by instrumentation scripts
+            ENVIRONMENT_DICT["ORDER"] = order
+            ENVIRONMENT_DICT["TEST_NUM"] = test
+            ENVIRONMENT_DICT["RUN_ID"] = id
+
             # Get test command from dictionary
             cmd = test_dict.get(test)
             log.info("Running " + cmd + "...")
             start = time.process_time()
+            setup_env_file(ssh, env_dict=ENVIRONMENT_DICT)
+            runCmd = "cd %s && %s" % (directory, cmd)
+            runCmd = "/bin/bash -c {}".format(
+                shlex.quote("source ~/instr_env.txt;" + runCmd))
             try:
-                execute_remote_command(ssh, "cd %s && %s" % (directory, cmd), log = log)
+                execute_remote_command(ssh, runCmd, log=log)
             except KeyboardInterrupt:
                 sys.exit(2)
             except:
@@ -520,6 +545,9 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
         log = LOG
     log.info("Beginning experimentation for " + worker)
 
+    # Add machine type to results file
+    ssh = open_ssh_connection(worker, allocation, log = log)
+
     # Assign number to each test and store in dictionary
     test_dict = {i : tests[i] for i in range(0, len(tests))}
 
@@ -527,7 +555,12 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
     repo_dir = Path(config.repo).name
     repo_dir = repo_dir[:-len(".git")] if repo_dir.endswith(".git") else repo_dir
 
+    # Configure instrumentation
+    for moduleName in config.instrumentation_modules:
+        configure_instr_module(partial(execute_remote_command, ssh, log=log), moduleName, ENVIRONMENT_DICT, log=log)
+
     # Run tests, returns lists to add to dataframe
+    ENVIRONMENT_DICT["TIMESTAMP"] = timestamp
     test_results, run_results = run_remote_experiment(worker, allocation, test_dict, config.n_runs,
                                                  directory=repo_dir, log=log)
 
@@ -542,8 +575,6 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
                                             "order_type", "random_seed", "time_start",
                                             "time_stop"))
 
-    # Add machine type to results file
-    ssh = open_ssh_connection(worker, allocation, log = log)
     results_with_hostname = worker + "_" + config.results_file
     try:
         execute_remote_command(ssh, "cd " + config.results_dir + " && "
@@ -552,7 +583,6 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
     except:
         log.warning('Failed to rename results file from ' + config.results_file +\
                     ' to ' + results_with_hostname)
-    ssh.close()
 
     # scp everything in results directory from worker and rename with timestamp
     log.info("Transferring results from " + worker + " to local")
@@ -561,6 +591,12 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
             config.user + "@" + worker + ":" + config.results_dir + "/*",
             "./" + results_dir]
     execute_local_command(cmd)
+
+    # pull instrumentation results from worker
+    for moduleName in config.instrumentation_modules:
+        pull_results(ssh, moduleName, results_dir, log)
+
+    ssh.close()
 
     # Gather results
     with open(results_dir + "/" + results_with_hostname) as f:
