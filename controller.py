@@ -576,6 +576,7 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
                                             "time_stop"))
 
     results_with_hostname = worker + "_" + config.results_file
+    ssh = open_ssh_connection(worker, allocation, log = log)  # reopen ssh connection
     try:
         execute_remote_command(ssh, "cd " + config.results_dir + " && "
                                 + "mv " + config.results_file + " "
