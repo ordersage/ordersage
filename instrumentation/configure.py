@@ -31,4 +31,7 @@ def pull_results(ssh, module_name, result_dir, log):
     if hasattr(config, "results_location"):
         log.info("Pulling results from " + config.results_location)
         scp = SCPClient(ssh.get_transport())
-        scp.get(config.results_location, result_dir, recursive=True)
+        try:
+            scp.get(config.results_location, result_dir, recursive=True)
+        except Exception as e:
+            log.error("Failed to pull results for %s" % module_name)

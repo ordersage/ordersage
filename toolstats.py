@@ -46,9 +46,9 @@ def process_data(data):
         else:
             return list_
 
-    data['result'] = data['result'].apply(to_float_list)
     df_mem = data[data["test_command"].str.contains("run_memory")]
     data = data[data["test_command"].str.contains("run_memory") == False]
+    df_mem['result'] = df_mem['result'].apply(to_float_list)
 
     tests = ['copy_omp','scale_omp','add_omp', 'triad_omp']
     for index, row in df_mem.iterrows():
