@@ -623,6 +623,7 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
     res = []
 
     if len(test_results_csv) != len(results):
+        print("Lengths donot match.")
         for i in test_results_csv.index:
             if test_results_csv["completion_status"][i] == 'Failure':
                 # Adding dummy data
@@ -630,6 +631,9 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
             else:
                 res.append(results[ri])
                 ri = ri + 1
+    else:
+        print("Lengths match.")
+        res = results
 
     test_results_csv["result"] = res
 
