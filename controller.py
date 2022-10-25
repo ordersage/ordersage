@@ -623,7 +623,10 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
     res = []
 
     if len(test_results_csv) != len(results):
-        print("Lengths donot match.")
+        #Incase the test results meta generated on ordersage controller does not match
+        #the results generated in the worker. Try to fill in the empty values.
+        #This would only occur in case of failures when the tests running on the worker donot
+        #add dummy result value in the results file.
         for i in test_results_csv.index:
             if test_results_csv["completion_status"][i] == 'Failure':
                 # Adding dummy data
@@ -632,7 +635,6 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
                 res.append(results[ri])
                 ri = ri + 1
     else:
-        print("Lengths match.")
         res = results
 
     test_results_csv["result"] = res
