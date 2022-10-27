@@ -22,16 +22,14 @@ import paramiko
 from scp import SCPClient
 
 # error handling and logging
-from requests import ConnectionError
 import logging
 from logger import configure_logging
 
 # Subprocess functions
-from subprocess import Popen, PIPE, STDOUT, run
+from subprocess import PIPE, STDOUT, run
 
 # dataframe libraries and stats
 import pandas as pd
-import numpy as np
 from statistics import mean
 
 # uuid library
@@ -452,7 +450,7 @@ def coordinate_initialization(allocation):
 #################################################################
 ### Run remote tests on worker node and record metadata ###
 #################################################################
-def run_remote_experiment(worker, allocation, test_dict, n_runs, directory,log=None):
+def run_remote_experiment(worker, allocation, test_dict, n_runs, results_dir, directory,log=None):
     """ Runs tests on worker node in either a fixed, arbitrary order or
     a random order. Runs will be executed 'n_runs' times, and results will be saved
     on the worker end. Upon completion, each run and its metadata will be stored.
@@ -511,7 +509,8 @@ def run_remote_experiment(worker, allocation, test_dict, n_runs, directory,log=N
             try:
                 execute_remote_command(ssh, runCmd, log=log)
             except KeyboardInterrupt:
-                sys.exit(2)
+                result = "Failure"
+                print("We have a keyboard interrupt.")
             except:
                 result = "Failure"
             else:
@@ -520,10 +519,23 @@ def run_remote_experiment(worker, allocation, test_dict, n_runs, directory,log=N
             # Save test with completion status and metadata
             test_result = [id, worker, x, n_runs, cmd, test, i, order, start, stop, result]
             test_data.append(test_result)
+            test_results_csv = pd.DataFrame(test_data,
+                                    columns=("run_uuid", "hostname", "run_num", "total_runs",
+                                            "test_command", "test_number", "order_number",
+                                            "order_type", "time_start", "time_stop",
+                                            "completion_status"))
+            test_results_csv.to_csv(results_dir + "/test_results_temp.csv", index=False)
+
         # Collect run information
         run_stop = timer()
         run_results = [id, worker, x, n_runs, order, rand_seed, run_start, run_stop]
         run_data.append(run_results)
+        run_results_csv = pd.DataFrame(run_data,
+                                    columns=("run_uuid", "hostname", "run_num", "total_runs",
+                                            "order_type", "random_seed", "time_start",
+                                            "time_stop"))
+        run_results_csv.to_csv(results_dir + "/run_results_temp.csv", index=False)
+
         try:
             reset(ssh, worker)
         except:
@@ -561,7 +573,7 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
 
     # Run tests, returns lists to add to dataframe
     ENVIRONMENT_DICT["TIMESTAMP"] = timestamp
-    test_results, run_results = run_remote_experiment(worker, allocation, test_dict, config.n_runs,
+    test_results, run_results = run_remote_experiment(worker, allocation, test_dict, config.n_runs, results_dir,
                                                  directory=repo_dir, log=log)
 
     # Create dataframe of individual tests for csv
@@ -606,7 +618,27 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
 
     # Add results to dataframe and save as csv specific to host
     log.info("Adding results to test metadata")
-    test_results_csv["result"] = results
+
+    ri = 0
+    res = []
+
+    if len(test_results_csv) != len(results):
+        #Incase the test results meta generated on ordersage controller does not match
+        #the results generated in the worker. Try to fill in the empty values.
+        #This would only occur in case of failures when the tests running on the worker donot
+        #add dummy result value in the results file.
+        for i in test_results_csv.index:
+            if test_results_csv["completion_status"][i] == 'Failure':
+                # Adding dummy data
+                res.append(0)
+            else:
+                res.append(results[ri])
+                ri = ri + 1
+    else:
+        res = results
+
+    test_results_csv["result"] = res
+
     test_results_csv.to_csv(results_dir + "/" + worker + "_test_results.csv", index=False)
     run_results_csv.to_csv(results_dir + "/" + worker + "_run_results.csv", index=False)
 
