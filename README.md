@@ -4,7 +4,7 @@ This repo contains the code for running benchmarks in fixed/randomized orders on
 
 To clone: 
 ```
-git clone https://gitlab.flux.utah.edu/carina/sigmetrics-tool.git
+git clone https://github.com/ordersage/ordersage.git
 ```
 
 ## To Start
