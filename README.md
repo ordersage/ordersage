@@ -38,13 +38,13 @@ After this, you might need to run: `~/miniconda/bin/conda init` (unless the inst
 When you have `conda` installed and initialized, create a new environment using the file provided in this repo:
 
 ```
-cd sigmetrics-tool 
+cd ordersage
 conda env create -f environment.yml
 ```
 
 To initialize the environment, do: 
 ```
-conda activate sigmetrics-tool
+conda activate ordersage
 ```
 
 **Always make sure that you run this `activate` command *before* running `controller.py` (otherwise the scripts will not find their dependencies!).**
@@ -133,7 +133,7 @@ Tests will be executed in a fixed, arbitrary order (known as a run). A run will 
 
 ## Results
 
-Results will be saved to a timestamped folder in the `sigmetrics-tool` directory. A single results folder contains metadata of each run (found in `run_results.csv`) in addition the results of each test (in `exp_results.csv`), and the machine specs of the worker node(s) (in `env_out.csv`). Test results will include the returned result of the test, as well as a report of success or failure.
+Results will be saved to a timestamped folder in the `ordersage` directory. A single results folder contains metadata of each run (found in `run_results.csv`) in addition the results of each test (in `exp_results.csv`), and the machine specs of the worker node(s) (in `env_out.csv`). Test results will include the returned result of the test, as well as a report of success or failure.
 
 ##### Result Requirements
 
