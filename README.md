@@ -2,7 +2,8 @@
 
 This repo contains the code for running benchmarks in fixed/randomized orders on specified remote resources.
 
-To clone: 
+To clone:
+
 ```
 git clone https://github.com/ordersage/ordersage.git
 ```
@@ -22,12 +23,14 @@ Users must have a working Python environment with such packages as `paramiko`, `
 If you don't have `conda` on the machine where you are running this code, do the following (it will install `miniconda`; it doesn't require root priviledges):
 
 For **OSX**, run:
+
 ```
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O ~/miniconda.sh
 bash ~/miniconda.sh -b -p $HOME/miniconda
 ```
 
 Alternatively, for **Linux**, run:
+
 ```
 wget https://repo.anaconda.com/miniconda/Miniconda3-py39_4.10.3-Linux-x86_64.sh -O ~/miniconda.sh
 bash ~/miniconda.sh -b -p $HOME/miniconda
@@ -38,23 +41,28 @@ After this, you might need to run: `~/miniconda/bin/conda init` (unless the inst
 When you have `conda` installed and initialized, create a new environment using the file provided in this repo:
 
 ```
-cd sigmetrics-tool 
+cd sigmetrics-tool
 conda env create -f environment.yml
 ```
 
-To initialize the environment, do: 
+To initialize the environment, do:
+
 ```
 conda activate sigmetrics-tool
 ```
 
-**Always make sure that you run this `activate` command *before* running `controller.py` (otherwise the scripts will not find their dependencies!).**
+**Always make sure that you run this `activate` command _before_ running `controller.py` (otherwise the scripts will not find their dependencies!).**
 
 #### 3. Set up ssh keys if necessary (typically need to set this up once for each contoller node)
 
+**Only do this if you are not using the [Ordersage Profile on Cloudlab](https://www.cloudlab.us/instantiate.php?project=ordersage&profile=paper-artifact).** If you using the Ordersage Profile on Cloudlab, the following part is automatically copied.
+
 On the controller node, run:
+
 ```
 ssh-keygen -o -a 100 -t ed25519 -f ~/.ssh/id_ed25519 -C "<your email>"
 ```
+
 Then copy the contents of the generated public key (` ~/.ssh/id_ed25519.pub`) to the file: `~/.ssh/authorized_keys` on **each** of the worker nodes that will be used for running experiments.
 
 To test the ssh connection from the controller node, run: `ssh <user>@<worker_hostname>`.
@@ -65,6 +73,15 @@ Inside `config.py`, update the `repo` option to your public repo containing test
 
 Examples of such repo can be seen at: [https://gitlab.flux.utah.edu/carina/os-experiments](https://gitlab.flux.utah.edu/carina/os-experiments)
 and [https://gitlab.flux.utah.edu/Duplyakin/test-experiments](https://gitlab.flux.utah.edu/Duplyakin/test-experiments)
+
+If you are using the [Ordersage Profile on Cloudlab](https://www.cloudlab.us/instantiate.php?project=ordersage&profile=paper-artifact), use the following values for the config variables -
+
+```
+workers = ["worker"]
+user = "ordersage"
+keyfile = "/local/id_rsa"
+port_num = 22
+```
 
 ##### Initialization
 
@@ -84,10 +101,11 @@ All test commands must be printed on new lines to stdout by running a script on 
 
 In order to use the code for allocating CloudLab nodes, which is available at:
 [https://gitlab.flux.utah.edu/emulab/cloudlab_allocator](https://gitlab.flux.utah.edu/emulab/cloudlab_allocator),
-clone that repo *inside* the directory with the files from this repo:
+clone that repo _inside_ the directory with the files from this repo:
+
 ```
 git clone https://gitlab.flux.utah.edu/emulab/cloudlab_allocator.git
-```  
+```
 
 Follow the steps described in the `README.md` from that repository.
 Installing `geni-lib` and setting up user credentials as described there are prerequisites for accessing CloudLab.
@@ -151,7 +169,7 @@ Results from runs will be analyzed via `toolstats.py`. Here, it is assumed that 
 2. Kruskall Wallace: reports whether test order has a statistically significant impact on performance
 3. Percent Difference: difference between means of fixed-arbitrary vs random order
 4. Effect Size: magnitude of percent difference
-5. Confidence Interval Comparisons: categorizes CI of two tests as: 
+5. Confidence Interval Comparisons: categorizes CI of two tests as:
     - overlapping with mean of one contained in CI of another
     - overlapping with means of both outside CIs of other
     - non-overlapping with reported difference between
