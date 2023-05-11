@@ -317,6 +317,7 @@ def initialize_remote_server(repo, worker, allocation, log=None):
         # Gather e specs
         log.info("Transferring env_info.sh to " + worker)
         cmd = ["scp",
+               "-i", allocation.public_key,
                 "-o", "StrictHostKeyChecking=no",
                 "env_info.sh",
                 config.user + "@" + worker + ":" + config.results_dir]
@@ -600,7 +601,7 @@ def run_single_node(worker, allocation, results_dir, tests, timestamp, log=None)
     # scp everything in results directory from worker and rename with timestamp
     log.info("Transferring results from " + worker + " to local")
     # "-o StrictHostKeyChecking=no" is supposed to help avoid answering "yes" for new machines
-    cmd = ["scp", "-o", "StrictHostKeyChecking=no", "-r",
+    cmd = ["scp", "-i", allocation.public_key, "-o", "StrictHostKeyChecking=no", "-r",
             config.user + "@" + worker + ":" + config.results_dir + "/*",
             "./" + results_dir]
     execute_local_command(cmd)
