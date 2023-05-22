@@ -1,4 +1,4 @@
-name: sigmetrics-tool
+name: ordersage
 channels:
   - defaults
 dependencies:
