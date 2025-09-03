@@ -63,7 +63,7 @@ To test the ssh connection from the controller node, run: `ssh <user>@<worker_ho
 
 Inside `config.py`, update the `repo` option to your public repo containing tests that need to be run.
 
-Examples of such repo can be seen at: [https://gitlab.flux.utah.edu/carina/os-experiments](https://gitlab.flux.utah.edu/carina/os-experiments)
+Examples of such repo can be seen at: [https://gitlab.flux.utah.edu/carina/os-benchmarks](https://gitlab.flux.utah.edu/carina/os-benchmarks)
 and [https://gitlab.flux.utah.edu/Duplyakin/test-experiments](https://gitlab.flux.utah.edu/Duplyakin/test-experiments)
 
 ##### Initialization
